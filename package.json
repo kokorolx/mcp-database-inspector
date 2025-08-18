@@ -21,6 +21,7 @@
   ],
   "author": "MCP MySQL Inspector Team",
   "license": "MIT",
+  "homepage": "https://github.com/kokorolx/mcp-mysql-inspector",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^0.5.0",
     "mysql2": "^3.11.4",

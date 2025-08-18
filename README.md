@@ -34,28 +34,6 @@ npm install
 npm run build
 ```
 
-## 🔧 Usage
-
-### Command Line
-```bash
-# Single database
-mcp-mysql-inspector "mysql://user:password@localhost:3306/mydb"
-
-# Multiple databases
-mcp-mysql-inspector \
-  "mysql://user:pass@db1:3306/orders" \
-  "mysql://user:pass@db2:3306/inventory" \
-  "mysql://user:pass@db3:3306/users"
-
-# With SSL
-
-mcp-mysql-inspector "mysql://user:pass@prod-db:3306/app?ssl=true"
-
-<!--
-Note: The `timeout` option is not supported for MySQL2 Connection. Remove it from connection strings.
--->
-```
-
 ### MCP Client Integration
 
 #### Roo Configuration
@@ -64,8 +42,9 @@ Create `roo-config.json`:
 {
   "servers": {
     "mysql-inspector": {
-      "command": "mcp-mysql-inspector",
+      "command": "npx",
       "args": [
+        "mcp-mysql-inspector",
         "mysql://dev:password@localhost:3306/ecommerce",
         "mysql://dev:password@localhost:3306/analytics"
       ]
