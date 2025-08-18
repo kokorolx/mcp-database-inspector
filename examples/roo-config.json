@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "mysql-inspector": {
+      "command": "mcp-mysql-inspector",
+      "args": [
+        "mysql://dev:password@localhost:3306/ecommerce",
+        "mysql://dev:password@localhost:3306/analytics", 
+        "mysql://dev:password@localhost:3306/inventory"
+      ],
+      "env": {
+        "LOG_LEVEL": "info"
+      }
+    }
+  },
+  "description": "Example Roo configuration for MCP MySQL Inspector with multiple databases"
+}

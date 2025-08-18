@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "mysql-inspector": {
+      "command": "node",
+      "args": [
+        "/path/to/mcp-mysql-inspector/dist/index.js",
+        "mysql://username:password@localhost:3306/database1",
+        "mysql://username:password@localhost:3306/database2"
+      ],
+      "env": {
+        "LOG_LEVEL": "info"
+      }
+    }
+  },
+  "_comment": "Example Claude Desktop configuration for MCP MySQL Inspector",
+  "_instructions": [
+    "1. Replace '/path/to/mcp-mysql-inspector/dist/index.js' with the actual path to your installation",
+    "2. Replace the database connection URLs with your actual database credentials",
+    "3. For global installation, use 'mcp-mysql-inspector' as the command instead of 'node' + path",
+    "4. Ensure your database user has SELECT permissions on the target databases",
+    "5. Add SSL options to URLs if required: mysql://user:pass@host:port/db?ssl=true"
+  ]
+}
