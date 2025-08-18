@@ -267,5 +267,52 @@ export class DatabaseManager {
         this.databases.clear();
         Logger.info('Database cleanup completed');
     }
+    /**
+     * Query INFORMATION_SCHEMA tables (COLUMNS, TABLES, ROUTINES) with filters and limits.
+     * Only allows safe, parameterized queries.
+     */
+    async queryInformationSchema(dbName, table, filters, limit = 100) {
+        const allowedTables = ['COLUMNS', 'TABLES', 'ROUTINES'];
+        if (!allowedTables.includes(table)) {
+            throw new ValidationError(`Table '${table}' is not allowed for INFORMATION_SCHEMA queries.`);
+        }
+        const config = this.databases.get(dbName);
+        if (!config) {
+            throw new DatabaseError(`Database not found: ${dbName}`);
+        }
+        // Only allow filtering on safe columns (uppercase, underscore)
+        let whereClauses = [];
+        let params = [];
+        if (filters) {
+            for (const [key, value] of Object.entries(filters)) {
+                if (!/^[A-Z_]+$/.test(key)) {
+                    throw new ValidationError(`Invalid filter key: ${key}. Only uppercase letters and underscores allowed.`);
+                }
+                whereClauses.push(`${key} = ?`);
+                params.push(value);
+            }
+        }
+        // Always restrict to the user's database schema if possible
+        if (table === 'COLUMNS' || table === 'TABLES' || table === 'ROUTINES') {
+            whereClauses.unshift('TABLE_SCHEMA = ?');
+            params.unshift(config.database);
+        }
+        let sql = `SELECT * FROM INFORMATION_SCHEMA.${table}`;
+        if (whereClauses.length > 0) {
+            sql += ' WHERE ' + whereClauses.join(' AND ');
+        }
+        sql += ` LIMIT ${Math.min(Math.max(limit, 1), 1000)}`;
+        let connection = null;
+        try {
+            connection = await this.getConnection(dbName);
+            const result = await DatabaseConnection.executeQuery(connection, sql, params);
+            return result;
+        }
+        finally {
+            if (connection) {
+                await DatabaseConnection.closeConnection(connection);
+            }
+        }
+    }
 }
 //# sourceMappingURL=manager.js.map

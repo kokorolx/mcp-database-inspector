@@ -10,6 +10,7 @@ import { listTablesToolDefinition, handleListTables } from './tools/list-tables.
 import { inspectTableToolDefinition, handleInspectTable } from './tools/inspect-table.js';
 import { getForeignKeysToolDefinition, handleGetForeignKeys } from './tools/get-foreign-keys.js';
 import { getIndexesToolDefinition, handleGetIndexes } from './tools/get-indexes.js';
+import { informationSchemaQueryToolDefinition, handleInformationSchemaQuery } from './tools/information-schema-query.js';
 export class MySQLInspectorServer {
     server;
     dbManager;
@@ -35,7 +36,8 @@ export class MySQLInspectorServer {
                     listTablesToolDefinition,
                     inspectTableToolDefinition,
                     getForeignKeysToolDefinition,
-                    getIndexesToolDefinition
+                    getIndexesToolDefinition,
+                    informationSchemaQueryToolDefinition
                 ]
             };
         });
@@ -56,6 +58,8 @@ export class MySQLInspectorServer {
                         return await handleGetForeignKeys(args, this.dbManager);
                     case 'get_indexes':
                         return await handleGetIndexes(args, this.dbManager);
+                    case 'information_schema_query':
+                        return await handleInformationSchemaQuery(args, this.dbManager);
                     default:
                         Logger.warn(`Unknown tool requested: ${name}`);
                         throw new ToolError(`Unknown tool: ${name}`);

@@ -31,6 +31,11 @@ import {
   handleGetIndexes
 } from './tools/get-indexes.js';
 
+import {
+  informationSchemaQueryToolDefinition,
+  handleInformationSchemaQuery
+} from './tools/information-schema-query.js';
+
 export class MySQLInspectorServer {
   private server: Server;
   private dbManager: DatabaseManager;
@@ -64,6 +69,8 @@ export class MySQLInspectorServer {
           inspectTableToolDefinition,
           getForeignKeysToolDefinition,
           getIndexesToolDefinition
+        ,
+          informationSchemaQueryToolDefinition
         ]
       };
     });
@@ -92,6 +99,9 @@ export class MySQLInspectorServer {
           case 'get_indexes':
             return await handleGetIndexes(args, this.dbManager);
             
+          case 'information_schema_query':
+            return await handleInformationSchemaQuery(args, this.dbManager);
+
           default:
             Logger.warn(`Unknown tool requested: ${name}`);
             throw new ToolError(`Unknown tool: ${name}`);

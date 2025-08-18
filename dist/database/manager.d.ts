@@ -14,5 +14,10 @@ export declare class DatabaseManager {
     getForeignKeys(dbName: string, tableName?: string): Promise<ForeignKeyInfo[]>;
     getIndexes(dbName: string, tableName: string): Promise<IndexInfo[]>;
     cleanup(): Promise<void>;
+    /**
+     * Query INFORMATION_SCHEMA tables (COLUMNS, TABLES, ROUTINES) with filters and limits.
+     * Only allows safe, parameterized queries.
+     */
+    queryInformationSchema(dbName: string, table: 'COLUMNS' | 'TABLES' | 'ROUTINES', filters?: Record<string, string>, limit?: number): Promise<QueryResult>;
 }
 //# sourceMappingURL=manager.d.ts.map
