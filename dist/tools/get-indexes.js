@@ -5,24 +5,45 @@ import { ToolError } from '../utils/errors.js';
 // Tool schema
 const GetIndexesArgsSchema = z.object({
     database: z.string().min(1, 'Database name is required'),
-    table: z.string().min(1, 'Table name is required')
+    table: z.string().min(1, 'Table name is required').optional(),
+    tables: z.array(z.string().min(1)).optional()
+}).superRefine((data, ctx) => {
+    const hasTable = typeof data.table === 'string' && data.table.length > 0;
+    const hasTables = Array.isArray(data.tables) && data.tables.length > 0;
+    if (hasTable && hasTables) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Provide either 'table' or 'tables', not both"
+        });
+    }
+    else if (!hasTable && !hasTables) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Either 'table' or non-empty 'tables' must be provided"
+        });
+    }
 });
 export const getIndexesToolDefinition = {
     name: 'get_indexes',
-    description: 'Get detailed index information for a specific table',
+    description: 'Get detailed index information for one or more tables. Supports multi-table inspection via the tables: string[] parameter.',
     inputSchema: {
         type: 'object',
         properties: {
             database: {
                 type: 'string',
-                description: 'Name of the database containing the table'
+                description: 'Name of the database containing the table(s)'
             },
             table: {
                 type: 'string',
-                description: 'Name of the table to get indexes for'
+                description: 'Name of the table to get indexes for (single-table mode)'
+            },
+            tables: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Array of table names to get indexes for (multi-table mode)'
             }
         },
-        required: ['database', 'table']
+        required: ['database']
     }
 };
 export async function handleGetIndexes(args, dbManager) {
@@ -34,23 +55,115 @@ export async function handleGetIndexes(args, dbManager) {
             Logger.warn('Invalid arguments for get_indexes', validationResult.error);
             throw new ToolError(`Invalid arguments: ${validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`, 'get_indexes');
         }
-        const { database, table } = validationResult.data;
-        // Sanitize inputs
+        const { database, table, tables } = validationResult.data;
+        // Sanitize database input
         const sanitizedDatabase = InputValidator.sanitizeString(database);
-        const sanitizedTable = InputValidator.sanitizeString(table);
-        // Validate database name format
         const dbNameValidation = InputValidator.validateDatabaseName(sanitizedDatabase);
         if (!dbNameValidation.isValid) {
             throw new ToolError(`Invalid database name: ${dbNameValidation.error}`, 'get_indexes');
         }
-        // Validate table name format
+        // Multi-table mode
+        if (Array.isArray(tables) && tables.length > 0) {
+            Logger.info(`Processing indexes for multiple tables: ${tables.join(', ')}`);
+            const results = {};
+            for (const tbl of tables) {
+                const sanitizedTable = InputValidator.sanitizeString(tbl);
+                const tableNameValidation = InputValidator.validateTableName(sanitizedTable);
+                if (!tableNameValidation.isValid) {
+                    Logger.warn(`Invalid table name for table '${tbl}': ${tableNameValidation.error}`);
+                    results[tbl] = {
+                        error: `Invalid table name: ${tableNameValidation.error}`
+                    };
+                    continue;
+                }
+                try {
+                    Logger.info(`Getting indexes for table: ${sanitizedDatabase}.${sanitizedTable}`);
+                    Logger.time(`get_indexes_execution_${sanitizedTable}`);
+                    const indexes = await dbManager.getIndexes(sanitizedDatabase, sanitizedTable);
+                    Logger.timeEnd(`get_indexes_execution_${sanitizedTable}`);
+                    Logger.info(`Found ${indexes.length} index entries for table: ${sanitizedDatabase}.${sanitizedTable}`);
+                    if (indexes.length === 0) {
+                        results[tbl] = {
+                            database: sanitizedDatabase,
+                            table: sanitizedTable,
+                            indexes: [],
+                            statistics: {
+                                totalIndexes: 0,
+                                uniqueIndexes: 0,
+                                primaryKeyIndex: false,
+                                compositeIndexes: 0,
+                                singleColumnIndexes: 0,
+                                totalIndexedColumns: 0
+                            },
+                            analysis: {
+                                indexCoverage: 'none',
+                                recommendations: ['Table has no indexes. Consider adding appropriate indexes for query performance.'],
+                                potentialIssues: ['No indexes found - all queries will require full table scans']
+                            },
+                            summary: {
+                                hasIndexes: false,
+                                message: `No indexes found for table '${sanitizedTable}' in database '${sanitizedDatabase}'`
+                            }
+                        };
+                        continue;
+                    }
+                    const groupedIndexes = groupIndexesByName(indexes);
+                    const analysis = analyzeIndexes(groupedIndexes);
+                    results[tbl] = {
+                        database: sanitizedDatabase,
+                        table: sanitizedTable,
+                        indexes: groupedIndexes.map(idx => ({
+                            name: idx.name,
+                            type: idx.type,
+                            unique: idx.unique,
+                            columns: idx.columns.map((col) => ({
+                                name: col.name,
+                                cardinality: col.cardinality,
+                                subPart: col.subPart,
+                                nullable: col.nullable,
+                                selectivity: col.cardinality && analysis.statistics.estimatedTableSize ?
+                                    (col.cardinality / analysis.statistics.estimatedTableSize).toFixed(4) : null
+                            })),
+                            isComposite: idx.columns.length > 1,
+                            isPrimary: idx.name === 'PRIMARY',
+                            purpose: determinePurpose(idx)
+                        })),
+                        statistics: analysis.statistics,
+                        indexAnalysis: analysis.analysis,
+                        performance: analyzeIndexPerformance(groupedIndexes),
+                        coverage: analyzeIndexCoverage(groupedIndexes),
+                        recommendations: generateIndexRecommendations(groupedIndexes, analysis),
+                        summary: {
+                            hasIndexes: groupedIndexes.length > 0,
+                            message: `Found ${groupedIndexes.length} index(es) covering ${analysis.statistics.totalIndexedColumns} column(s) in table '${sanitizedTable}'`
+                        }
+                    };
+                }
+                catch (err) {
+                    Logger.error(`Error processing table '${tbl}' in get_indexes tool`, err);
+                    results[tbl] = {
+                        error: err instanceof Error ? err.message : String(err)
+                    };
+                }
+            }
+            return {
+                content: [{
+                        type: 'text',
+                        text: JSON.stringify(results, null, 2)
+                    }]
+            };
+        }
+        // Single-table mode (backward compatible)
+        if (typeof table !== 'string' || table.length === 0) {
+            throw new ToolError("Missing required parameter: 'table'", 'get_indexes');
+        }
+        const sanitizedTable = InputValidator.sanitizeString(table);
         const tableNameValidation = InputValidator.validateTableName(sanitizedTable);
         if (!tableNameValidation.isValid) {
             throw new ToolError(`Invalid table name: ${tableNameValidation.error}`, 'get_indexes');
         }
         Logger.info(`Getting indexes for table: ${sanitizedDatabase}.${sanitizedTable}`);
         Logger.time('get_indexes_execution');
-        // Get indexes
         const indexes = await dbManager.getIndexes(sanitizedDatabase, sanitizedTable);
         Logger.timeEnd('get_indexes_execution');
         Logger.info(`Found ${indexes.length} index entries for table: ${sanitizedDatabase}.${sanitizedTable}`);
@@ -87,7 +200,6 @@ export async function handleGetIndexes(args, dbManager) {
         // Group indexes by name and analyze
         const groupedIndexes = groupIndexesByName(indexes);
         const analysis = analyzeIndexes(groupedIndexes);
-        // Create response
         const response = {
             database: sanitizedDatabase,
             table: sanitizedTable,
@@ -131,11 +243,30 @@ export async function handleGetIndexes(args, dbManager) {
         };
     }
     catch (error) {
-        Logger.error('Error in get_indexes tool', error);
+        // Add table context to error logs
+        let tableContext;
+        let argTables;
+        let argTable;
+        if (args && typeof args === 'object') {
+            // @ts-ignore
+            argTables = Array.isArray(args.tables) ? args.tables : undefined;
+            // @ts-ignore
+            argTable = typeof args.table === 'string' ? args.table : undefined;
+        }
+        if (Array.isArray(argTables) && argTables.length > 0) {
+            tableContext = `tables: [${argTables.join(', ')}]`;
+        }
+        else if (typeof argTable === 'string' && argTable.length > 0) {
+            tableContext = `table: ${argTable}`;
+        }
+        else {
+            tableContext = 'no table(s) specified';
+        }
+        Logger.error(`Error in get_indexes tool (${tableContext})`, error);
         if (error instanceof ToolError) {
             throw error;
         }
-        throw new ToolError(`Failed to get indexes: ${error instanceof Error ? error.message : 'Unknown error'}`, 'get_indexes', error instanceof Error ? error : undefined);
+        throw new ToolError(`Failed to get indexes (${tableContext}): ${error instanceof Error ? error.message : 'Unknown error'}`, 'get_indexes', error instanceof Error ? error : undefined);
     }
 }
 // Helper functions

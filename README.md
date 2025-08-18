@@ -100,13 +100,52 @@ Lists all connected databases with connection status.
 Lists all tables in a specified database with metadata.
 
 ### 3. `inspect_table`
-Get complete table schema including columns, types, and constraints.
+Get complete table schema including columns, types, constraints, and metadata.
+Supports both single-table and multi-table inspection via the `table` (string) or `tables` (string[]) parameter.
+
+**Parameters:**
+- `database` (string, required): Name of the database.
+- `table` (string, optional): Name of a single table to inspect.
+- `tables` (string[], optional): Array of table names to inspect (multi-table mode).
+  Provide either `table` or `tables`, not both.
+
+**Examples:**
+```json
+{ "database": "mydb", "table": "users" }
+{ "database": "mydb", "tables": ["users", "orders", "products"] }
+```
 
 ### 4. `get_foreign_keys`
-Get foreign key relationships for a table or entire database.
+Get foreign key relationships for one or more tables, or the entire database.
+Supports both single-table and multi-table inspection via the `table` (string) or `tables` (string[]) parameter.
+
+**Parameters:**
+- `database` (string, required): Name of the database.
+- `table` (string, optional): Name of a single table to analyze.
+- `tables` (string[], optional): Array of table names to analyze (multi-table mode).
+  Provide either `table` or `tables`, not both.
+
+**Examples:**
+```json
+{ "database": "mydb", "table": "orders" }
+{ "database": "mydb", "tables": ["orders", "order_items"] }
+```
 
 ### 5. `get_indexes`
-Get detailed index information for a specific table.
+Get detailed index information for one or more tables.
+Supports both single-table and multi-table inspection via the `table` (string) or `tables` (string[]) parameter.
+
+**Parameters:**
+- `database` (string, required): Name of the database.
+- `table` (string, optional): Name of a single table to analyze.
+- `tables` (string[], optional): Array of table names to analyze (multi-table mode).
+  Provide either `table` or `tables`, not both.
+
+**Examples:**
+```json
+{ "database": "mydb", "table": "products" }
+{ "database": "mydb", "tables": ["products", "categories"] }
+```
 
 ## 🔒 Security Features
 

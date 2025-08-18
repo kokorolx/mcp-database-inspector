@@ -7,44 +7,78 @@ import { ToolError } from '../utils/errors.js';
 // Tool schema
 const InspectTableArgsSchema = z.object({
   database: z.string().min(1, 'Database name is required'),
-  table: z.string().min(1, 'Table name is required')
+  table: z.string().optional(),
+  tables: z.array(z.string().min(1)).optional()
+}).superRefine((data, ctx) => {
+  const hasTable = typeof data.table === 'string' && data.table.length > 0;
+  const hasTables = Array.isArray(data.tables) && data.tables.length > 0;
+  if (hasTable && hasTables) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Provide either 'table' or 'tables', not both"
+    });
+  } else if (!hasTable && !hasTables) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Either 'table' or non-empty 'tables' must be provided"
+    });
+  }
 });
 
+/**
+ * Tool: inspect_table
+ * Get complete table schema including columns, types, constraints, and metadata.
+ *
+ * Supports both single-table and multi-table inspection:
+ * - Provide either `table` (string) for a single table, or `tables` (string[]) for multiple tables.
+ * - If `tables` is provided, returns a mapping of table names to their schema analysis.
+ * - Do not provide both `table` and `tables` at the same time.
+ */
 export interface InspectTableTool {
   name: 'inspect_table';
-  description: 'Get complete table schema including columns, types, constraints, and metadata';
+  description: 'Get complete table schema including columns, types, constraints, and metadata. Supports multi-table inspection via the tables: string[] parameter.';
   inputSchema: {
     type: 'object';
     properties: {
       database: {
         type: 'string';
-        description: 'Name of the database containing the table';
+        description: 'Name of the database containing the table(s)';
       };
       table: {
         type: 'string';
-        description: 'Name of the table to inspect';
+        description: 'Name of the table to inspect (single-table mode)';
+      };
+      tables: {
+        type: 'array';
+        items: { type: 'string' };
+        description: 'Array of table names to inspect (multi-table mode)';
       };
     };
-    required: ['database', 'table'];
+    required: ['database'];
   };
 }
 
 export const inspectTableToolDefinition: InspectTableTool = {
   name: 'inspect_table',
-  description: 'Get complete table schema including columns, types, constraints, and metadata',
+  description: 'Get complete table schema including columns, types, constraints, and metadata. Supports multi-table inspection via the tables: string[] parameter.',
   inputSchema: {
     type: 'object',
     properties: {
       database: {
         type: 'string',
-        description: 'Name of the database containing the table'
+        description: 'Name of the database containing the table(s)'
       },
       table: {
         type: 'string',
-        description: 'Name of the table to inspect'
+        description: 'Name of the table to inspect (single-table mode)'
+      },
+      tables: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Array of table names to inspect (multi-table mode)'
       }
     },
-    required: ['database', 'table']
+    required: ['database']
   }
 };
 
@@ -54,7 +88,7 @@ export async function handleInspectTable(
 ): Promise<any> {
   try {
     Logger.info('Executing inspect_table tool');
-    
+
     // Validate arguments
     const validationResult = InspectTableArgsSchema.safeParse(args);
     if (!validationResult.success) {
@@ -65,12 +99,11 @@ export async function handleInspectTable(
       );
     }
 
-    const { database, table } = validationResult.data;
-    
-    // Sanitize inputs
+    const { database, table, tables } = validationResult.data;
+
+    // Sanitize database input
     const sanitizedDatabase = InputValidator.sanitizeString(database);
-    const sanitizedTable = InputValidator.sanitizeString(table);
-    
+
     // Validate database name format
     const dbNameValidation = InputValidator.validateDatabaseName(sanitizedDatabase);
     if (!dbNameValidation.isValid) {
@@ -80,122 +113,191 @@ export async function handleInspectTable(
       );
     }
 
-    // Validate table name format
-    const tableNameValidation = InputValidator.validateTableName(sanitizedTable);
-    if (!tableNameValidation.isValid) {
-      throw new ToolError(
-        `Invalid table name: ${tableNameValidation.error}`,
-        'inspect_table'
-      );
-    }
+    // Helper to process a single table
+    const processTable = async (tableName: string) => {
+      try {
+        const sanitizedTable = InputValidator.sanitizeString(tableName);
 
-    Logger.info(`Inspecting table: ${sanitizedDatabase}.${sanitizedTable}`);
-    Logger.time('inspect_table_execution');
-    
-    // Get table schema
-    const columns = await dbManager.getTableSchema(sanitizedDatabase, sanitizedTable);
-    
-    // Get additional metadata in parallel
-    const [foreignKeys, indexes] = await Promise.all([
-      dbManager.getForeignKeys(sanitizedDatabase, sanitizedTable),
-      dbManager.getIndexes(sanitizedDatabase, sanitizedTable)
-    ]);
-    
-    Logger.timeEnd('inspect_table_execution');
-    Logger.info(`Retrieved schema for table: ${sanitizedDatabase}.${sanitizedTable} with ${columns.length} columns`);
-
-    if (columns.length === 0) {
-      throw new ToolError(
-        `Table '${sanitizedTable}' not found in database '${sanitizedDatabase}' or has no accessible columns`,
-        'inspect_table'
-      );
-    }
-
-    // Analyze schema patterns
-    const analysis = analyzeTableSchema(columns, indexes, foreignKeys);
-    
-    // Group columns by characteristics
-    const columnsByType = groupColumnsByType(columns);
-    
-    // Create comprehensive response
-    const response = {
-      database: sanitizedDatabase,
-      table: sanitizedTable,
-      columns: columns.map(col => ({
-        name: col.columnName,
-        dataType: col.dataType,
-        fullType: formatFullDataType(col),
-        nullable: col.isNullable === 'YES',
-        defaultValue: col.columnDefault,
-        isPrimaryKey: col.isPrimaryKey,
-        isAutoIncrement: col.isAutoIncrement,
-        comment: col.columnComment,
-        constraints: getColumnConstraints(col),
-        properties: {
-          hasLength: col.characterMaximumLength !== null && col.characterMaximumLength !== undefined,
-          hasPrecision: col.numericPrecision !== null && col.numericPrecision !== undefined,
-          hasScale: col.numericScale !== null && col.numericScale !== undefined
+        // Validate table name format
+        const tableNameValidation = InputValidator.validateTableName(sanitizedTable);
+        if (!tableNameValidation.isValid) {
+          throw new ToolError(
+            `Invalid table name: ${tableNameValidation.error}`,
+            'inspect_table'
+          );
         }
-      })),
-      constraints: {
-        primaryKey: columns.filter(col => col.isPrimaryKey).map(col => col.columnName),
-        foreignKeys: foreignKeys.map(fk => ({
-          constraintName: fk.constraintName,
-          columnName: fk.columnName,
-          referencedTable: fk.referencedTableName,
-          referencedColumn: fk.referencedColumnName,
-          updateRule: fk.updateRule,
-          deleteRule: fk.deleteRule
-        })),
-        unique: indexes.filter(idx => !idx.nonUnique && idx.indexName !== 'PRIMARY')
-          .map(idx => idx.indexName)
-          .filter((value, index, self) => self.indexOf(value) === index) // Remove duplicates
-      },
-      indexes: groupIndexesByName(indexes),
-      statistics: {
-        totalColumns: columns.length,
-        nullableColumns: columns.filter(col => col.isNullable === 'YES').length,
-        primaryKeyColumns: columns.filter(col => col.isPrimaryKey).length,
-        autoIncrementColumns: columns.filter(col => col.isAutoIncrement).length,
-        indexedColumns: [...new Set(indexes.map(idx => idx.columnName))].length,
-        foreignKeyColumns: [...new Set(foreignKeys.map(fk => fk.columnName))].length,
-        totalIndexes: [...new Set(indexes.map(idx => idx.indexName))].length,
-        totalForeignKeys: foreignKeys.length
-      },
-      columnsByType,
-      analysis,
-      summary: {
-        description: `Table '${sanitizedTable}' has ${columns.length} columns with ${
-          columns.filter(col => col.isPrimaryKey).length
-        } primary key column(s) and ${indexes.length > 0 ? [...new Set(indexes.map(idx => idx.indexName))].length : 0} index(es)`,
-        recommendations: analysis.recommendations
+
+        Logger.info(`Inspecting table: ${sanitizedDatabase}.${sanitizedTable}`);
+        Logger.time(`inspect_table_execution_${sanitizedTable}`);
+
+        // Get table schema
+        const columns = await dbManager.getTableSchema(sanitizedDatabase, sanitizedTable);
+
+        // Get additional metadata in parallel
+        const [foreignKeys, indexes] = await Promise.all([
+          dbManager.getForeignKeys(sanitizedDatabase, sanitizedTable),
+          dbManager.getIndexes(sanitizedDatabase, sanitizedTable)
+        ]);
+
+        Logger.timeEnd(`inspect_table_execution_${sanitizedTable}`);
+        Logger.info(`Retrieved schema for table: ${sanitizedDatabase}.${sanitizedTable} with ${columns.length} columns`);
+
+        if (columns.length === 0) {
+          throw new ToolError(
+            `Table '${sanitizedTable}' not found in database '${sanitizedDatabase}' or has no accessible columns`,
+            'inspect_table'
+          );
+        }
+
+        // Analyze schema patterns
+        const analysis = analyzeTableSchema(columns, indexes, foreignKeys);
+
+        // Group columns by characteristics
+        const columnsByType = groupColumnsByType(columns);
+
+        // Create comprehensive response
+        const response = {
+          database: sanitizedDatabase,
+          table: sanitizedTable,
+          columns: columns.map(col => ({
+            name: col.columnName,
+            dataType: col.dataType,
+            fullType: formatFullDataType(col),
+            nullable: col.isNullable === 'YES',
+            defaultValue: col.columnDefault,
+            isPrimaryKey: col.isPrimaryKey,
+            isAutoIncrement: col.isAutoIncrement,
+            comment: col.columnComment,
+            constraints: getColumnConstraints(col),
+            properties: {
+              hasLength: col.characterMaximumLength !== null && col.characterMaximumLength !== undefined,
+              hasPrecision: col.numericPrecision !== null && col.numericPrecision !== undefined,
+              hasScale: col.numericScale !== null && col.numericScale !== undefined
+            }
+          })),
+          constraints: {
+            primaryKey: columns.filter(col => col.isPrimaryKey).map(col => col.columnName),
+            foreignKeys: foreignKeys.map(fk => ({
+              constraintName: fk.constraintName,
+              columnName: fk.columnName,
+              referencedTable: fk.referencedTableName,
+              referencedColumn: fk.referencedColumnName,
+              updateRule: fk.updateRule,
+              deleteRule: fk.deleteRule
+            })),
+            unique: indexes.filter(idx => !idx.nonUnique && idx.indexName !== 'PRIMARY')
+              .map(idx => idx.indexName)
+              .filter((value, index, self) => self.indexOf(value) === index) // Remove duplicates
+          },
+          indexes: groupIndexesByName(indexes),
+          statistics: {
+            totalColumns: columns.length,
+            nullableColumns: columns.filter(col => col.isNullable === 'YES').length,
+            primaryKeyColumns: columns.filter(col => col.isPrimaryKey).length,
+            autoIncrementColumns: columns.filter(col => col.isAutoIncrement).length,
+            indexedColumns: [...new Set(indexes.map(idx => idx.columnName))].length,
+            foreignKeyColumns: [...new Set(foreignKeys.map(fk => fk.columnName))].length,
+            totalIndexes: [...new Set(indexes.map(idx => idx.indexName))].length,
+            totalForeignKeys: foreignKeys.length
+          },
+          columnsByType,
+          analysis,
+          summary: {
+            description: `Table '${sanitizedTable}' has ${columns.length} columns with ${
+              columns.filter(col => col.isPrimaryKey).length
+            } primary key column(s) and ${indexes.length > 0 ? [...new Set(indexes.map(idx => idx.indexName))].length : 0} index(es)`,
+            recommendations: analysis.recommendations
+          }
+        };
+
+        Logger.debug('inspect_table completed successfully', {
+          database: sanitizedDatabase,
+          table: sanitizedTable,
+          columnCount: columns.length,
+          indexCount: indexes.length,
+          foreignKeyCount: foreignKeys.length
+        });
+
+        return { ok: true, result: response };
+      } catch (err) {
+        Logger.error(`Error inspecting table '${tableName}'`, err);
+        return {
+          ok: false,
+          error: err instanceof ToolError
+            ? err.message
+            : (err instanceof Error ? err.message : 'Unknown error')
+        };
       }
     };
 
-    Logger.debug('inspect_table completed successfully', {
-      database: sanitizedDatabase,
-      table: sanitizedTable,
-      columnCount: columns.length,
-      indexCount: indexes.length,
-      foreignKeyCount: foreignKeys.length
-    });
+    // Multi-table support
+    if (Array.isArray(tables) && tables.length > 0) {
+      const results: Record<string, any> = {};
+      for (const t of tables) {
+        const res = await processTable(t);
+        if (res.ok) {
+          results[t] = res.result;
+        } else {
+          results[t] = { error: res.error };
+        }
+      }
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(results, null, 2)
+        }]
+      };
+    }
 
-    return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify(response, null, 2)
-      }]
-    };
+    // Single-table fallback (backward compatible)
+    if (typeof table === 'string' && table.length > 0) {
+      const res = await processTable(table);
+      if (res.ok) {
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify(res.result, null, 2)
+          }]
+        };
+      } else {
+        throw new ToolError(
+          `Failed to inspect table '${table}': ${res.error}`,
+          'inspect_table'
+        );
+      }
+    }
 
+    // Should not reach here due to schema refinement
+    throw new ToolError(
+      "Either 'table' or non-empty 'tables' must be provided",
+      'inspect_table'
+    );
   } catch (error) {
-    Logger.error('Error in inspect_table tool', error);
-    
+    // Add table context to error logs
+    let tableContext: string | undefined;
+    let argTables: string[] | undefined;
+    let argTable: string | undefined;
+    if (args && typeof args === 'object') {
+      // @ts-ignore
+      argTables = Array.isArray(args.tables) ? args.tables : undefined;
+      // @ts-ignore
+      argTable = typeof args.table === 'string' ? args.table : undefined;
+    }
+    if (Array.isArray(argTables) && argTables.length > 0) {
+      tableContext = `tables: [${argTables.join(', ')}]`;
+    } else if (typeof argTable === 'string' && argTable.length > 0) {
+      tableContext = `table: ${argTable}`;
+    } else {
+      tableContext = 'no table(s) specified';
+    }
+    Logger.error(`Error in inspect_table tool (${tableContext})`, error);
+
     if (error instanceof ToolError) {
       throw error;
     }
-    
+
     throw new ToolError(
-      `Failed to inspect table: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      `Failed to inspect table(s) (${tableContext}): ${error instanceof Error ? error.message : 'Unknown error'}`,
       'inspect_table',
       error instanceof Error ? error : undefined
     );
