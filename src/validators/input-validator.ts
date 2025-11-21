@@ -23,19 +23,19 @@ export class InputValidator {
   static readonly databaseNameSchema = z.string()
     .min(1, 'Database name cannot be empty')
     .max(64, 'Database name cannot exceed 64 characters')
-    .regex(/^[a-zA-Z_][a-zA-Z0-9_$]*$/, 'Invalid database name format');
+    .regex(/^[a-zA-Z_][a-zA-Z0-9_$-]*$/, 'Invalid database name format');
 
   // Schema for table names
   static readonly tableNameSchema = z.string()
     .min(1, 'Table name cannot be empty')
     .max(64, 'Table name cannot exceed 64 characters')
-    .regex(/^[a-zA-Z_][a-zA-Z0-9_$]*$|^`[^`]+`$/, 'Invalid table name format');
+    .regex(/^[a-zA-Z_][a-zA-Z0-9_$-]*$|^`[^`]+`$/, 'Invalid table name format');
 
   // Schema for column names
   static readonly columnNameSchema = z.string()
     .min(1, 'Column name cannot be empty')
     .max(64, 'Column name cannot exceed 64 characters')
-    .regex(/^[a-zA-Z_][a-zA-Z0-9_$]*$|^`[^`]+`$/, 'Invalid column name format');
+    .regex(/^[a-zA-Z_][a-zA-Z0-9_$-]*$|^`[^`]+`$/, 'Invalid column name format');
 
   // Schema for general text input
   static readonly textInputSchema = z.string()
@@ -206,7 +206,7 @@ export class InputValidator {
    */
   static validateNumeric(value: string, options?: { min?: number; max?: number; integer?: boolean }): ValidationResult {
     const num = Number(value);
-    
+
     if (isNaN(num)) {
       return { isValid: false, error: 'Value must be a valid number' };
     }
@@ -230,7 +230,7 @@ export class InputValidator {
    * Validate an array of values
    */
   static validateArray<T>(
-    values: unknown[], 
+    values: unknown[],
     itemValidator: (item: unknown) => ValidationResult & { data?: T }
   ): ValidationResult & { data?: T[] } {
     if (!Array.isArray(values)) {

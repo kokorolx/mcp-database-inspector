@@ -44,7 +44,7 @@ export class MySQLInspectorServer {
     this.server = new Server(
       {
         name: 'mcp-mysql-inspector',
-        version: '1.0.0',
+        version: '1.1.0',
       },
       {
         capabilities: {
@@ -61,7 +61,7 @@ export class MySQLInspectorServer {
     // List available tools
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
       Logger.debug('Received list_tools request');
-      
+
       return {
         tools: [
           listDatabasesToolDefinition,
@@ -78,7 +78,7 @@ export class MySQLInspectorServer {
     // Handle tool calls
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
-      
+
       Logger.info(`Received tool call: ${name}`);
       Logger.debug(`Tool arguments:`, args);
 
@@ -86,19 +86,19 @@ export class MySQLInspectorServer {
         switch (name) {
           case 'list_databases':
             return await handleListDatabases(args, this.dbManager);
-            
+
           case 'list_tables':
             return await handleListTables(args, this.dbManager);
-            
+
           case 'inspect_table':
             return await handleInspectTable(args, this.dbManager);
-            
+
           case 'get_foreign_keys':
             return await handleGetForeignKeys(args, this.dbManager);
-            
+
           case 'get_indexes':
             return await handleGetIndexes(args, this.dbManager);
-            
+
           case 'information_schema_query':
             return await handleInformationSchemaQuery(args, this.dbManager);
 
@@ -108,9 +108,9 @@ export class MySQLInspectorServer {
         }
       } catch (error) {
         Logger.error(`Error executing tool ${name}:`, error);
-        
+
         const errorResponse = createErrorResponse(error instanceof Error ? error : new Error('Unknown error'));
-        
+
         return {
           content: [{
             type: 'text',
@@ -158,23 +158,23 @@ export class MySQLInspectorServer {
 
   async run(): Promise<void> {
     Logger.info('Starting MySQL Inspector MCP Server');
-    
+
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    
+
     Logger.info('Server started and listening for requests');
   }
 
   async shutdown(): Promise<void> {
     Logger.info('Shutting down MySQL Inspector Server');
-    
+
     try {
       await this.dbManager.cleanup();
       Logger.info('Database connections cleaned up');
     } catch (error) {
       Logger.error('Error during database cleanup:', error);
     }
-    
+
     Logger.info('Server shutdown complete');
   }
 
@@ -187,7 +187,7 @@ export class MySQLInspectorServer {
     const databases = this.dbManager.listDatabases();
     return {
       serverName: 'mcp-mysql-inspector',
-      version: '1.0.0',
+      version: '1.1.0',
       connectedDatabases: databases.length,
       databases: databases.map(db => ({
         name: db.name,
@@ -198,7 +198,7 @@ export class MySQLInspectorServer {
       })),
       capabilities: [
         'list_databases',
-        'list_tables', 
+        'list_tables',
         'inspect_table',
         'get_foreign_keys',
         'get_indexes'

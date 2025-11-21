@@ -21,17 +21,17 @@ export class InputValidator {
     static databaseNameSchema = z.string()
         .min(1, 'Database name cannot be empty')
         .max(64, 'Database name cannot exceed 64 characters')
-        .regex(/^[a-zA-Z_][a-zA-Z0-9_$]*$/, 'Invalid database name format');
+        .regex(/^[a-zA-Z_][a-zA-Z0-9_$-]*$/, 'Invalid database name format');
     // Schema for table names
     static tableNameSchema = z.string()
         .min(1, 'Table name cannot be empty')
         .max(64, 'Table name cannot exceed 64 characters')
-        .regex(/^[a-zA-Z_][a-zA-Z0-9_$]*$|^`[^`]+`$/, 'Invalid table name format');
+        .regex(/^[a-zA-Z_][a-zA-Z0-9_$-]*$|^`[^`]+`$/, 'Invalid table name format');
     // Schema for column names
     static columnNameSchema = z.string()
         .min(1, 'Column name cannot be empty')
         .max(64, 'Column name cannot exceed 64 characters')
-        .regex(/^[a-zA-Z_][a-zA-Z0-9_$]*$|^`[^`]+`$/, 'Invalid column name format');
+        .regex(/^[a-zA-Z_][a-zA-Z0-9_$-]*$|^`[^`]+`$/, 'Invalid column name format');
     // Schema for general text input
     static textInputSchema = z.string()
         .max(10000, 'Input too long')

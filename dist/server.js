@@ -17,7 +17,7 @@ export class MySQLInspectorServer {
     constructor() {
         this.server = new Server({
             name: 'mcp-mysql-inspector',
-            version: '1.0.0',
+            version: '1.1.0',
         }, {
             capabilities: {
                 tools: {},
@@ -132,7 +132,7 @@ export class MySQLInspectorServer {
         const databases = this.dbManager.listDatabases();
         return {
             serverName: 'mcp-mysql-inspector',
-            version: '1.0.0',
+            version: '1.1.0',
             connectedDatabases: databases.length,
             databases: databases.map(db => ({
                 name: db.name,

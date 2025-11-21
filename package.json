@@ -19,17 +19,17 @@
     "schema",
     "ai"
   ],
-  "author": "MCP MySQL Inspector Team",
+  "author": "kokorolx",
   "license": "MIT",
   "homepage": "https://github.com/kokorolx/mcp-mysql-inspector",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^0.5.0",
-    "mysql2": "^3.11.4",
-    "zod": "^3.23.8"
+    "@modelcontextprotocol/sdk": "^1.22.0",
+    "mysql2": "^3.15.3",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "typescript": "^5.5.4"
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=18.0.0"
