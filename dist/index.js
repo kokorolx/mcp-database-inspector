@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { DatabaseInspectorServer } from './server.js';
 import { Logger } from './utils/logger.js';
 import { InputValidator } from './validators/input-validator.js';
