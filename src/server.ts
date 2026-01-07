@@ -54,7 +54,7 @@ export class DatabaseInspectorServer {
     this.server = new Server(
       {
         name: 'mcp-database-inspector',
-        version: '2.0.0',
+        version: '2.0.1',
       },
       {
         capabilities: {
