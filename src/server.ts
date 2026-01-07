@@ -36,15 +36,25 @@ import {
   handleInformationSchemaQuery
 } from './tools/information-schema-query.js';
 
-export class MySQLInspectorServer {
+import {
+  executeQueryToolDefinition,
+  handleExecuteQuery
+} from './tools/execute-query.js';
+
+import {
+  analyzeQueryToolDefinition,
+  handleAnalyzeQuery
+} from './tools/analyze-query.js';
+
+export class DatabaseInspectorServer {
   private server: Server;
   private dbManager: DatabaseManager;
 
   constructor() {
     this.server = new Server(
       {
-        name: 'mcp-mysql-inspector',
-        version: '1.1.0',
+        name: 'mcp-database-inspector',
+        version: '2.0.0',
       },
       {
         capabilities: {
@@ -68,9 +78,10 @@ export class MySQLInspectorServer {
           listTablesToolDefinition,
           inspectTableToolDefinition,
           getForeignKeysToolDefinition,
-          getIndexesToolDefinition
-        ,
-          informationSchemaQueryToolDefinition
+          getIndexesToolDefinition,
+          informationSchemaQueryToolDefinition,
+          executeQueryToolDefinition,
+          analyzeQueryToolDefinition
         ]
       };
     });
@@ -101,6 +112,12 @@ export class MySQLInspectorServer {
 
           case 'information_schema_query':
             return await handleInformationSchemaQuery(args, this.dbManager);
+
+          case 'execute_query':
+            return await handleExecuteQuery(args, this.dbManager);
+
+          case 'analyze_query':
+            return await handleAnalyzeQuery(args, this.dbManager);
 
           default:
             Logger.warn(`Unknown tool requested: ${name}`);
@@ -186,8 +203,8 @@ export class MySQLInspectorServer {
   async getServerInfo(): Promise<any> {
     const databases = this.dbManager.listDatabases();
     return {
-      serverName: 'mcp-mysql-inspector',
-      version: '1.1.0',
+      serverName: 'mcp-database-inspector',
+      version: '2.0.0',
       connectedDatabases: databases.length,
       databases: databases.map(db => ({
         name: db.name,
@@ -201,7 +218,11 @@ export class MySQLInspectorServer {
         'list_tables',
         'inspect_table',
         'get_foreign_keys',
-        'get_indexes'
+        'get_foreign_keys',
+        'get_indexes',
+        'information_schema_query',
+        'execute_query',
+        'analyze_query'
       ],
       status: databases.length > 0 ? 'ready' : 'no_connections'
     };
@@ -230,4 +251,4 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
-export default MySQLInspectorServer;
+export default DatabaseInspectorServer;

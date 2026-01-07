@@ -1,3 +1,4 @@
+import { DatabaseType } from '../database/types.js';
 export class QueryValidator {
     // Keywords that are forbidden in queries
     static FORBIDDEN_KEYWORDS = [
@@ -7,19 +8,20 @@ export class QueryValidator {
         'GRANT', 'REVOKE', 'SET', 'USE', 'START',
         'BEGIN', 'COMMIT', 'ROLLBACK', 'SAVEPOINT',
         'LOCK', 'UNLOCK', 'FLUSH', 'RESET', 'PURGE',
-        'KILL', 'SHUTDOWN', 'RESTART'
+        'KILL', 'SHUTDOWN', 'RESTART', 'COPY'
     ];
     // Allowed keywords for read-only operations
     static ALLOWED_KEYWORDS = [
         'SELECT', 'SHOW', 'DESCRIBE', 'DESC', 'EXPLAIN',
-        'ANALYZE', 'CHECK', 'CHECKSUM', 'OPTIMIZE'
+        'ANALYZE', 'CHECK', 'CHECKSUM', 'OPTIMIZE', 'WITH', 'VALUES'
     ];
     // Dangerous functions that should be blocked
     static FORBIDDEN_FUNCTIONS = [
         'LOAD_FILE', 'INTO OUTFILE', 'INTO DUMPFILE',
-        'SYSTEM', 'USER_DEFINED_FUNCTION', 'BENCHMARK'
+        'SYSTEM', 'USER_DEFINED_FUNCTION', 'BENCHMARK',
+        'PG_READ_FILE', 'PG_LS_DIR', 'PG_EXECUTE'
     ];
-    static validateQuery(query) {
+    static validateQuery(query, type = DatabaseType.MySQL) {
         if (!query || query.trim().length === 0) {
             return {
                 isValid: false,
@@ -43,7 +45,7 @@ export class QueryValidator {
             return allowedCheck;
         }
         // Check for SQL injection patterns
-        const injectionCheck = this.checkSqlInjectionPatterns(normalizedQuery);
+        const injectionCheck = this.checkSqlInjectionPatterns(normalizedQuery, type);
         if (!injectionCheck.isValid) {
             return injectionCheck;
         }
@@ -100,16 +102,18 @@ export class QueryValidator {
         }
         return { isValid: true };
     }
-    static checkSqlInjectionPatterns(query) {
+    static checkSqlInjectionPatterns(query, type) {
         const suspiciousPatterns = [
             /;\s*(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER)/i, // Multiple statements
             /UNION\s+(ALL\s+)?SELECT/i, // Union-based injection
             /'\s*(OR|AND)\s*'[^']*'\s*=/i, // Quote-based injection
             /'\s*(OR|AND)\s*\d+\s*=\s*\d+/i, // Numeric injection
-            /INFORMATION_SCHEMA\.\w+\s+(WHERE|AND|OR)/i, // Information schema manipulation
             /CONCAT\s*\(\s*0x[0-9a-f]+/i, // Hex concatenation
             /(SLEEP|BENCHMARK)\s*\(/i, // Time-based attacks
         ];
+        if (type === DatabaseType.MySQL) {
+            suspiciousPatterns.push(/INFORMATION_SCHEMA\.\w+\s+(WHERE|AND|OR)/i);
+        }
         for (const pattern of suspiciousPatterns) {
             if (pattern.test(query)) {
                 return {
@@ -164,7 +168,7 @@ export class QueryValidator {
                 error: 'Identifier cannot be empty'
             };
         }
-        // MySQL identifier rules
+        // MySQL/PostgreSQL identifier rules (simplified common)
         const validIdentifier = /^[a-zA-Z_][a-zA-Z0-9_$]*$|^`[^`]+`$/;
         if (!validIdentifier.test(identifier.trim())) {
             return {
@@ -172,8 +176,8 @@ export class QueryValidator {
                 error: 'Invalid identifier format. Use only letters, numbers, underscore, and dollar sign.'
             };
         }
-        // Check length (MySQL limit is 64 characters)
-        const cleanIdentifier = identifier.replace(/`/g, '');
+        // Check length (common limit is 64 characters)
+        const cleanIdentifier = identifier.replace(/[`"]/g, '');
         if (cleanIdentifier.length > 64) {
             return {
                 isValid: false,
@@ -196,7 +200,7 @@ export class QueryValidator {
     static isSimpleReadQuery(query) {
         const normalized = this.normalizeQuery(query);
         const firstWord = normalized.split(' ')[0];
-        return ['SELECT', 'SHOW', 'DESCRIBE', 'DESC', 'EXPLAIN'].includes(firstWord);
+        return ['SELECT', 'SHOW', 'DESCRIBE', 'DESC', 'EXPLAIN', 'WITH', 'VALUES'].includes(firstWord);
     }
     // Estimate query complexity
     static getQueryComplexity(query) {

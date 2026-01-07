@@ -53,7 +53,7 @@ export async function handleGetIndexes(args, dbManager) {
         const validationResult = GetIndexesArgsSchema.safeParse(args);
         if (!validationResult.success) {
             Logger.warn('Invalid arguments for get_indexes', validationResult.error);
-            throw new ToolError(`Invalid arguments: ${validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`, 'get_indexes');
+            throw new ToolError(`Invalid arguments: ${validationResult.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`, 'get_indexes');
         }
         const { database, table, tables } = validationResult.data;
         // Sanitize database input
@@ -125,7 +125,7 @@ export async function handleGetIndexes(args, dbManager) {
                                     (col.cardinality / analysis.statistics.estimatedTableSize).toFixed(4) : null
                             })),
                             isComposite: idx.columns.length > 1,
-                            isPrimary: idx.name === 'PRIMARY',
+                            isPrimary: idx.isPrimary,
                             purpose: determinePurpose(idx)
                         })),
                         statistics: analysis.statistics,
@@ -216,7 +216,7 @@ export async function handleGetIndexes(args, dbManager) {
                         (col.cardinality / analysis.statistics.estimatedTableSize).toFixed(4) : null
                 })),
                 isComposite: idx.columns.length > 1,
-                isPrimary: idx.name === 'PRIMARY',
+                isPrimary: idx.isPrimary,
                 purpose: determinePurpose(idx)
             })),
             statistics: analysis.statistics,
@@ -292,7 +292,7 @@ function groupIndexesByName(indexes) {
 }
 function analyzeIndexes(indexes) {
     const uniqueIndexes = indexes.filter(idx => idx.unique).length;
-    const primaryIndex = indexes.find(idx => idx.name === 'PRIMARY');
+    const primaryIndex = indexes.find(idx => idx.isPrimary);
     const compositeIndexes = indexes.filter(idx => idx.columns.length > 1).length;
     const singleColumnIndexes = indexes.filter(idx => idx.columns.length === 1).length;
     // Get all indexed columns (unique)
@@ -349,7 +349,7 @@ function analyzeIndexPerformance(indexes) {
         const cardinality = firstColumn.cardinality || 0;
         const isLowCardinality = cardinality < 10; // Very low selectivity
         const isHighCardinality = cardinality > 1000; // Good selectivity
-        if (isLowCardinality && !idx.unique && idx.name !== 'PRIMARY') {
+        if (isLowCardinality && !idx.unique && !idx.isPrimary) {
             performance.lowSelectivity.push({
                 name: idx.name,
                 cardinality,
@@ -413,7 +413,7 @@ function analyzeIndexCoverage(indexes) {
         }
     };
     const allColumns = indexes.flatMap(idx => idx.columns.map((col) => col.name.toLowerCase()));
-    coverage.primaryKey = indexes.some(idx => idx.name === 'PRIMARY');
+    coverage.primaryKey = indexes.some(idx => idx.isPrimary);
     coverage.commonPatterns.hasTimestampIndex = allColumns.some(col => col.includes('created') || col.includes('updated') || col.includes('timestamp'));
     coverage.commonPatterns.hasStatusIndex = allColumns.some(col => col.includes('status') || col.includes('state') || col.includes('active'));
     coverage.commonPatterns.hasNameIndex = allColumns.some(col => col.includes('name') || col.includes('title') || col.includes('description'));
@@ -444,7 +444,7 @@ function generateIndexRecommendations(indexes, analysis) {
     return recommendations;
 }
 function determinePurpose(index) {
-    if (index.name === 'PRIMARY') {
+    if (index.isPrimary) {
         return 'primary_key';
     }
     else if (index.unique) {

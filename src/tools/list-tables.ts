@@ -51,7 +51,7 @@ export async function handleListTables(
     if (!validationResult.success) {
       Logger.warn('Invalid arguments for list_tables', validationResult.error);
       throw new ToolError(
-        `Invalid arguments: ${validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+        `Invalid arguments: ${validationResult.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
         'list_tables'
       );
     }

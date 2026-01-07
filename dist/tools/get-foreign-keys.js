@@ -53,7 +53,7 @@ export async function handleGetForeignKeys(args, dbManager) {
         const validationResult = GetForeignKeysArgsSchema.safeParse(args);
         if (!validationResult.success) {
             Logger.warn('Invalid arguments for get_foreign_keys', validationResult.error);
-            throw new ToolError(`Invalid arguments: ${validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`, 'get_foreign_keys');
+            throw new ToolError(`Invalid arguments: ${validationResult.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`, 'get_foreign_keys');
         }
         const { database, table, tables } = validationResult.data;
         // Sanitize inputs
@@ -95,7 +95,7 @@ export async function handleGetForeignKeys(args, dbManager) {
                             targetColumn: fk.referencedColumnName,
                             updateRule: fk.updateRule,
                             deleteRule: fk.deleteRule,
-                            relationshipType: determineRelationshipType(fk.updateRule, fk.deleteRule)
+                            relationshipType: determineRelationshipType(fk.updateRule || 'NO ACTION', fk.deleteRule || 'NO ACTION')
                         })),
                         relationships: analysis.relationships,
                         statistics: {
@@ -172,7 +172,7 @@ export async function handleGetForeignKeys(args, dbManager) {
                 targetColumn: fk.referencedColumnName,
                 updateRule: fk.updateRule,
                 deleteRule: fk.deleteRule,
-                relationshipType: determineRelationshipType(fk.updateRule, fk.deleteRule)
+                relationshipType: determineRelationshipType(fk.updateRule || 'NO ACTION', fk.deleteRule || 'NO ACTION')
             })),
             relationships: analysis.relationships,
             statistics: {
@@ -301,13 +301,15 @@ function analyzeForeignKeyRelationships(foreignKeys) {
     };
 }
 function determineRelationshipType(updateRule, deleteRule) {
-    if (deleteRule === 'CASCADE') {
+    const ur = updateRule || 'NO ACTION';
+    const dr = deleteRule || 'NO ACTION';
+    if (ur === 'CASCADE' || dr === 'CASCADE') {
         return 'strong_dependency'; // Child cannot exist without parent
     }
-    else if (deleteRule === 'RESTRICT' || deleteRule === 'NO ACTION') {
+    else if (dr === 'RESTRICT' || dr === 'NO ACTION') {
         return 'protective'; // Prevents accidental deletion
     }
-    else if (deleteRule === 'SET NULL') {
+    else if (dr === 'SET NULL') {
         return 'optional_reference'; // Relationship can be broken
     }
     else {

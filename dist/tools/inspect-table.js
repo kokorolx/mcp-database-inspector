@@ -53,7 +53,7 @@ export async function handleInspectTable(args, dbManager) {
         const validationResult = InspectTableArgsSchema.safeParse(args);
         if (!validationResult.success) {
             Logger.warn('Invalid arguments for inspect_table', validationResult.error);
-            throw new ToolError(`Invalid arguments: ${validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`, 'inspect_table');
+            throw new ToolError(`Invalid arguments: ${validationResult.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`, 'inspect_table');
         }
         const { database, table, tables } = validationResult.data;
         // Sanitize database input
@@ -120,7 +120,7 @@ export async function handleInspectTable(args, dbManager) {
                             updateRule: fk.updateRule,
                             deleteRule: fk.deleteRule
                         })),
-                        unique: indexes.filter(idx => !idx.nonUnique && idx.indexName !== 'PRIMARY')
+                        unique: indexes.filter(idx => !idx.nonUnique && !idx.isPrimary)
                             .map(idx => idx.indexName)
                             .filter((value, index, self) => self.indexOf(value) === index) // Remove duplicates
                     },
@@ -262,19 +262,19 @@ function groupColumnsByType(columns) {
     };
     columns.forEach(col => {
         const type = col.dataType.toLowerCase();
-        if (['int', 'bigint', 'smallint', 'tinyint', 'mediumint', 'decimal', 'numeric', 'float', 'double', 'bit'].some(t => type.includes(t))) {
+        if (['int', 'bigint', 'smallint', 'tinyint', 'mediumint', 'decimal', 'numeric', 'float', 'double', 'bit', 'real', 'serial'].some(t => type.includes(t))) {
             groups.numeric.push(col.columnName);
         }
-        else if (['varchar', 'char', 'text', 'longtext', 'mediumtext', 'tinytext', 'enum', 'set'].some(t => type.includes(t))) {
+        else if (['varchar', 'char', 'text', 'longtext', 'mediumtext', 'tinytext', 'enum', 'set', 'uuid', 'inet', 'cidr', 'macaddr'].some(t => type.includes(t))) {
             groups.string.push(col.columnName);
         }
-        else if (['datetime', 'date', 'time', 'timestamp', 'year'].some(t => type.includes(t))) {
+        else if (['datetime', 'date', 'time', 'timestamp', 'year', 'interval'].some(t => type.includes(t))) {
             groups.datetime.push(col.columnName);
         }
-        else if (['binary', 'varbinary', 'blob', 'longblob', 'mediumblob', 'tinyblob'].some(t => type.includes(t))) {
+        else if (['binary', 'varbinary', 'blob', 'longblob', 'mediumblob', 'tinyblob', 'bytea'].some(t => type.includes(t))) {
             groups.binary.push(col.columnName);
         }
-        else if (type === 'json') {
+        else if (type === 'json' || type === 'jsonb') {
             groups.json.push(col.columnName);
         }
         else {

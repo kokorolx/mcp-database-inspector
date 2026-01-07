@@ -1,9 +1,9 @@
-import { ValidationResult } from '../database/types.js';
+import { DatabaseType, ValidationResult } from '../database/types.js';
 export declare class QueryValidator {
     private static readonly FORBIDDEN_KEYWORDS;
     private static readonly ALLOWED_KEYWORDS;
     private static readonly FORBIDDEN_FUNCTIONS;
-    static validateQuery(query: string): ValidationResult;
+    static validateQuery(query: string, type?: DatabaseType): ValidationResult;
     private static normalizeQuery;
     private static checkForbiddenKeywords;
     private static checkForbiddenFunctions;

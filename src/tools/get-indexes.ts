@@ -94,7 +94,7 @@ export async function handleGetIndexes(
     if (!validationResult.success) {
       Logger.warn('Invalid arguments for get_indexes', validationResult.error);
       throw new ToolError(
-        `Invalid arguments: ${validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+        `Invalid arguments: ${validationResult.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
         'get_indexes'
       );
     }
@@ -177,7 +177,7 @@ export async function handleGetIndexes(
                   (col.cardinality / analysis.statistics.estimatedTableSize).toFixed(4) : null
               })),
               isComposite: idx.columns.length > 1,
-              isPrimary: idx.name === 'PRIMARY',
+              isPrimary: idx.isPrimary,
               purpose: determinePurpose(idx)
             })),
             statistics: analysis.statistics,
@@ -281,7 +281,7 @@ export async function handleGetIndexes(
             (col.cardinality / analysis.statistics.estimatedTableSize).toFixed(4) : null
         })),
         isComposite: idx.columns.length > 1,
-        isPrimary: idx.name === 'PRIMARY',
+        isPrimary: idx.isPrimary,
         purpose: determinePurpose(idx)
       })),
       statistics: analysis.statistics,
@@ -344,7 +344,7 @@ export async function handleGetIndexes(
 // Helper functions
 function groupIndexesByName(indexes: any[]): any[] {
   const indexGroups: Record<string, any> = {};
-  
+
   indexes.forEach(idx => {
     if (!indexGroups[idx.indexName]) {
       indexGroups[idx.indexName] = {
@@ -361,22 +361,22 @@ function groupIndexesByName(indexes: any[]): any[] {
       nullable: idx.nullable
     });
   });
-  
+
   return Object.values(indexGroups);
 }
 
 function analyzeIndexes(indexes: any[]): any {
   const uniqueIndexes = indexes.filter(idx => idx.unique).length;
-  const primaryIndex = indexes.find(idx => idx.name === 'PRIMARY');
+  const primaryIndex = indexes.find(idx => idx.isPrimary);
   const compositeIndexes = indexes.filter(idx => idx.columns.length > 1).length;
   const singleColumnIndexes = indexes.filter(idx => idx.columns.length === 1).length;
-  
+
   // Get all indexed columns (unique)
   const indexedColumns = new Set();
   indexes.forEach(idx => {
     idx.columns.forEach((col: any) => indexedColumns.add(col.name));
   });
-  
+
   // Estimate table size from cardinality
   let estimatedTableSize = 0;
   if (primaryIndex && primaryIndex.columns.length > 0) {
@@ -389,7 +389,7 @@ function analyzeIndexes(indexes: any[]): any {
     );
     estimatedTableSize = maxCardinality > 0 ? maxCardinality : 0;
   }
-  
+
   return {
     statistics: {
       totalIndexes: indexes.length,
@@ -399,7 +399,7 @@ function analyzeIndexes(indexes: any[]): any {
       singleColumnIndexes,
       totalIndexedColumns: indexedColumns.size,
       estimatedTableSize,
-      averageIndexCardinality: indexes.length > 0 ? 
+      averageIndexCardinality: indexes.length > 0 ?
         indexes.reduce((sum, idx) => sum + (idx.columns[0]?.cardinality || 0), 0) / indexes.length : 0
     },
     analysis: {
@@ -421,16 +421,16 @@ function analyzeIndexPerformance(indexes: any[]): any {
     potentiallyRedundant: [] as any[],
     wellDesigned: [] as any[]
   };
-  
+
   indexes.forEach(idx => {
     const firstColumn = idx.columns[0];
     if (!firstColumn) return;
-    
+
     const cardinality = firstColumn.cardinality || 0;
     const isLowCardinality = cardinality < 10; // Very low selectivity
     const isHighCardinality = cardinality > 1000; // Good selectivity
-    
-    if (isLowCardinality && !idx.unique && idx.name !== 'PRIMARY') {
+
+    if (isLowCardinality && !idx.unique && !idx.isPrimary) {
       performance.lowSelectivity.push({
         name: idx.name,
         cardinality,
@@ -443,14 +443,14 @@ function analyzeIndexPerformance(indexes: any[]): any {
         reason: 'High selectivity should provide good query performance'
       });
     }
-    
+
     // Check for well-designed composite indexes (decreasing cardinality)
     if (idx.columns.length > 1) {
       const cardinalities = idx.columns.map((col: any) => col.cardinality || 0);
       const isWellOrdered = cardinalities.every((card: number, i: number) =>
         i === 0 || card <= cardinalities[i - 1]
       );
-      
+
       if (isWellOrdered) {
         performance.wellDesigned.push({
           name: idx.name,
@@ -460,13 +460,13 @@ function analyzeIndexPerformance(indexes: any[]): any {
       }
     }
   });
-  
+
   // Look for potentially redundant indexes
   indexes.forEach((idx1, i) => {
     indexes.slice(i + 1).forEach(idx2 => {
       const columns1 = idx1.columns.map((col: any) => col.name);
       const columns2 = idx2.columns.map((col: any) => col.name);
-      
+
       // Check if one index is a prefix of another
       if (columns1.length <= columns2.length) {
         const isPrefix = columns1.every((col: string, idx: number) => col === columns2[idx]);
@@ -480,7 +480,7 @@ function analyzeIndexPerformance(indexes: any[]): any {
       }
     });
   });
-  
+
   return performance;
 }
 
@@ -500,56 +500,56 @@ function analyzeIndexCoverage(indexes: any[]): any {
       other: 0
     }
   };
-  
+
   const allColumns = indexes.flatMap(idx => idx.columns.map((col: any) => col.name.toLowerCase()));
-  
-  coverage.primaryKey = indexes.some(idx => idx.name === 'PRIMARY');
-  coverage.commonPatterns.hasTimestampIndex = allColumns.some(col => 
+
+  coverage.primaryKey = indexes.some(idx => idx.isPrimary);
+  coverage.commonPatterns.hasTimestampIndex = allColumns.some(col =>
     col.includes('created') || col.includes('updated') || col.includes('timestamp')
   );
-  coverage.commonPatterns.hasStatusIndex = allColumns.some(col => 
+  coverage.commonPatterns.hasStatusIndex = allColumns.some(col =>
     col.includes('status') || col.includes('state') || col.includes('active')
   );
-  coverage.commonPatterns.hasNameIndex = allColumns.some(col => 
+  coverage.commonPatterns.hasNameIndex = allColumns.some(col =>
     col.includes('name') || col.includes('title') || col.includes('description')
   );
-  
+
   return coverage;
 }
 
 function generateIndexRecommendations(indexes: any[], analysis: any): string[] {
   const recommendations: string[] = [];
-  
+
   if (!analysis.analysis.hasPrimaryKey) {
     recommendations.push('Add a primary key index for better performance and data integrity');
   }
-  
+
   if (analysis.statistics.totalIndexes === 0) {
     recommendations.push('Table has no indexes. Consider adding indexes on frequently queried columns');
   } else if (analysis.statistics.totalIndexes > 10) {
     recommendations.push('Table has many indexes. Consider removing unused indexes to improve write performance');
   }
-  
+
   if (analysis.statistics.compositeIndexes === 0 && analysis.statistics.totalIndexes > 3) {
     recommendations.push('Consider creating composite indexes for queries filtering on multiple columns');
   }
-  
+
   // Check for missing indexes on commonly queried patterns
   const allColumns = indexes.flatMap(idx => idx.columns.map((col: any) => col.name.toLowerCase()));
-  
+
   if (!allColumns.some(col => col.includes('created') || col.includes('timestamp'))) {
     recommendations.push('Consider adding an index on timestamp/created_at columns for temporal queries');
   }
-  
+
   if (indexes.filter(idx => !idx.unique).length > 6) {
     recommendations.push('Many non-unique indexes detected. Review if all are necessary for your query patterns');
   }
-  
+
   return recommendations;
 }
 
 function determinePurpose(index: any): string {
-  if (index.name === 'PRIMARY') {
+  if (index.isPrimary) {
     return 'primary_key';
   } else if (index.unique) {
     return 'unique_constraint';

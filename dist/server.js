@@ -11,13 +11,15 @@ import { inspectTableToolDefinition, handleInspectTable } from './tools/inspect-
 import { getForeignKeysToolDefinition, handleGetForeignKeys } from './tools/get-foreign-keys.js';
 import { getIndexesToolDefinition, handleGetIndexes } from './tools/get-indexes.js';
 import { informationSchemaQueryToolDefinition, handleInformationSchemaQuery } from './tools/information-schema-query.js';
-export class MySQLInspectorServer {
+import { executeQueryToolDefinition, handleExecuteQuery } from './tools/execute-query.js';
+import { analyzeQueryToolDefinition, handleAnalyzeQuery } from './tools/analyze-query.js';
+export class DatabaseInspectorServer {
     server;
     dbManager;
     constructor() {
         this.server = new Server({
-            name: 'mcp-mysql-inspector',
-            version: '1.1.0',
+            name: 'mcp-database-inspector',
+            version: '2.0.0',
         }, {
             capabilities: {
                 tools: {},
@@ -37,7 +39,9 @@ export class MySQLInspectorServer {
                     inspectTableToolDefinition,
                     getForeignKeysToolDefinition,
                     getIndexesToolDefinition,
-                    informationSchemaQueryToolDefinition
+                    informationSchemaQueryToolDefinition,
+                    executeQueryToolDefinition,
+                    analyzeQueryToolDefinition
                 ]
             };
         });
@@ -60,6 +64,10 @@ export class MySQLInspectorServer {
                         return await handleGetIndexes(args, this.dbManager);
                     case 'information_schema_query':
                         return await handleInformationSchemaQuery(args, this.dbManager);
+                    case 'execute_query':
+                        return await handleExecuteQuery(args, this.dbManager);
+                    case 'analyze_query':
+                        return await handleAnalyzeQuery(args, this.dbManager);
                     default:
                         Logger.warn(`Unknown tool requested: ${name}`);
                         throw new ToolError(`Unknown tool: ${name}`);
@@ -131,8 +139,8 @@ export class MySQLInspectorServer {
     async getServerInfo() {
         const databases = this.dbManager.listDatabases();
         return {
-            serverName: 'mcp-mysql-inspector',
-            version: '1.1.0',
+            serverName: 'mcp-database-inspector',
+            version: '2.0.0',
             connectedDatabases: databases.length,
             databases: databases.map(db => ({
                 name: db.name,
@@ -146,7 +154,11 @@ export class MySQLInspectorServer {
                 'list_tables',
                 'inspect_table',
                 'get_foreign_keys',
-                'get_indexes'
+                'get_foreign_keys',
+                'get_indexes',
+                'information_schema_query',
+                'execute_query',
+                'analyze_query'
             ],
             status: databases.length > 0 ? 'ready' : 'no_connections'
         };
@@ -170,5 +182,5 @@ process.on('SIGTERM', async () => {
     Logger.info('Received SIGTERM, shutting down gracefully...');
     process.exit(0);
 });
-export default MySQLInspectorServer;
+export default DatabaseInspectorServer;
 //# sourceMappingURL=server.js.map

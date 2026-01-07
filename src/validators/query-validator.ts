@@ -1,30 +1,31 @@
-import { ValidationResult } from '../database/types.js';
+import { DatabaseType, ValidationResult } from '../database/types.js';
 
 export class QueryValidator {
   // Keywords that are forbidden in queries
   private static readonly FORBIDDEN_KEYWORDS = [
-    'INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 
+    'INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE',
     'ALTER', 'TRUNCATE', 'REPLACE', 'MERGE', 'CALL',
     'EXEC', 'EXECUTE', 'LOAD', 'IMPORT', 'BULK',
     'GRANT', 'REVOKE', 'SET', 'USE', 'START',
     'BEGIN', 'COMMIT', 'ROLLBACK', 'SAVEPOINT',
     'LOCK', 'UNLOCK', 'FLUSH', 'RESET', 'PURGE',
-    'KILL', 'SHUTDOWN', 'RESTART'
+    'KILL', 'SHUTDOWN', 'RESTART', 'COPY'
   ];
 
   // Allowed keywords for read-only operations
   private static readonly ALLOWED_KEYWORDS = [
     'SELECT', 'SHOW', 'DESCRIBE', 'DESC', 'EXPLAIN',
-    'ANALYZE', 'CHECK', 'CHECKSUM', 'OPTIMIZE'
+    'ANALYZE', 'CHECK', 'CHECKSUM', 'OPTIMIZE', 'WITH', 'VALUES'
   ];
 
   // Dangerous functions that should be blocked
   private static readonly FORBIDDEN_FUNCTIONS = [
     'LOAD_FILE', 'INTO OUTFILE', 'INTO DUMPFILE',
-    'SYSTEM', 'USER_DEFINED_FUNCTION', 'BENCHMARK'
+    'SYSTEM', 'USER_DEFINED_FUNCTION', 'BENCHMARK',
+    'PG_READ_FILE', 'PG_LS_DIR', 'PG_EXECUTE'
   ];
 
-  static validateQuery(query: string): ValidationResult {
+  static validateQuery(query: string, type: DatabaseType = DatabaseType.MySQL): ValidationResult {
     if (!query || query.trim().length === 0) {
       return {
         isValid: false,
@@ -33,7 +34,7 @@ export class QueryValidator {
     }
 
     const normalizedQuery = this.normalizeQuery(query);
-    
+
     // Check for forbidden keywords
     const forbiddenCheck = this.checkForbiddenKeywords(normalizedQuery);
     if (!forbiddenCheck.isValid) {
@@ -53,7 +54,7 @@ export class QueryValidator {
     }
 
     // Check for SQL injection patterns
-    const injectionCheck = this.checkSqlInjectionPatterns(normalizedQuery);
+    const injectionCheck = this.checkSqlInjectionPatterns(normalizedQuery, type);
     if (!injectionCheck.isValid) {
       return injectionCheck;
     }
@@ -108,27 +109,30 @@ export class QueryValidator {
 
   private static checkAllowedStart(query: string): ValidationResult {
     const firstWord = query.split(' ')[0];
-    
+
     if (!this.ALLOWED_KEYWORDS.includes(firstWord)) {
       return {
         isValid: false,
         error: `Query must start with one of: ${this.ALLOWED_KEYWORDS.join(', ')}`
       };
     }
-    
+
     return { isValid: true };
   }
 
-  private static checkSqlInjectionPatterns(query: string): ValidationResult {
+  private static checkSqlInjectionPatterns(query: string, type: DatabaseType): ValidationResult {
     const suspiciousPatterns = [
       /;\s*(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER)/i, // Multiple statements
       /UNION\s+(ALL\s+)?SELECT/i, // Union-based injection
       /'\s*(OR|AND)\s*'[^']*'\s*=/i, // Quote-based injection
       /'\s*(OR|AND)\s*\d+\s*=\s*\d+/i, // Numeric injection
-      /INFORMATION_SCHEMA\.\w+\s+(WHERE|AND|OR)/i, // Information schema manipulation
       /CONCAT\s*\(\s*0x[0-9a-f]+/i, // Hex concatenation
       /(SLEEP|BENCHMARK)\s*\(/i, // Time-based attacks
     ];
+
+    if (type === DatabaseType.MySQL) {
+        suspiciousPatterns.push(/INFORMATION_SCHEMA\.\w+\s+(WHERE|AND|OR)/i);
+    }
 
     for (const pattern of suspiciousPatterns) {
       if (pattern.test(query)) {
@@ -196,9 +200,9 @@ export class QueryValidator {
       };
     }
 
-    // MySQL identifier rules
+    // MySQL/PostgreSQL identifier rules (simplified common)
     const validIdentifier = /^[a-zA-Z_][a-zA-Z0-9_$]*$|^`[^`]+`$/;
-    
+
     if (!validIdentifier.test(identifier.trim())) {
       return {
         isValid: false,
@@ -206,8 +210,8 @@ export class QueryValidator {
       };
     }
 
-    // Check length (MySQL limit is 64 characters)
-    const cleanIdentifier = identifier.replace(/`/g, '');
+    // Check length (common limit is 64 characters)
+    const cleanIdentifier = identifier.replace(/[`"]/g, '');
     if (cleanIdentifier.length > 64) {
       return {
         isValid: false,
@@ -221,7 +225,7 @@ export class QueryValidator {
   // Sanitize user input
   static sanitizeInput(input: string): string {
     if (!input) return '';
-    
+
     // Remove null bytes and control characters
     return input
       .replace(/\0/g, '')
@@ -233,8 +237,8 @@ export class QueryValidator {
   static isSimpleReadQuery(query: string): boolean {
     const normalized = this.normalizeQuery(query);
     const firstWord = normalized.split(' ')[0];
-    
-    return ['SELECT', 'SHOW', 'DESCRIBE', 'DESC', 'EXPLAIN'].includes(firstWord);
+
+    return ['SELECT', 'SHOW', 'DESCRIBE', 'DESC', 'EXPLAIN', 'WITH', 'VALUES'].includes(firstWord);
   }
 
   // Estimate query complexity
@@ -244,13 +248,13 @@ export class QueryValidator {
 
     // Count joins
     complexity += (normalized.match(/\bJOIN\b/g) || []).length * 2;
-    
+
     // Count subqueries
     complexity += (normalized.match(/\bSELECT\b/g) || []).length - 1;
-    
+
     // Count aggregation functions
     complexity += (normalized.match(/\b(COUNT|SUM|AVG|MAX|MIN|GROUP_CONCAT)\b/g) || []).length;
-    
+
     // Count sorting and grouping
     if (normalized.includes('ORDER BY')) complexity += 1;
     if (normalized.includes('GROUP BY')) complexity += 2;

@@ -1,5 +1,4 @@
-#!/usr/bin/env node
-import { MySQLInspectorServer } from './server.js';
+import { DatabaseInspectorServer } from './server.js';
 import { Logger } from './utils/logger.js';
 import { InputValidator } from './validators/input-validator.js';
 async function main() {
@@ -8,20 +7,22 @@ async function main() {
         const args = process.argv.slice(2);
         if (args.length === 0) {
             console.error(`
-Usage: mcp-mysql-inspector <database_url1> [database_url2] [database_url3] ...
+Usage: mcp-database-inspector <database_url1> [database_url2] [database_url3] ...
 
 Examples:
-  # Single database
-  mcp-mysql-inspector "mysql://user:password@localhost:3306/mydb"
+  # Single MySQL database
+  mcp-database-inspector "mysql://user:password@localhost:3306/mydb"
 
-  # Multiple databases
-  mcp-mysql-inspector \\
-    "mysql://user:pass@db1:3306/orders" \\
-    "mysql://user:pass@db2:3306/inventory" \\
-    "mysql://user:pass@db3:3306/users"
+  # Single PostgreSQL database
+  mcp-database-inspector "postgresql://user:password@localhost:5432/mydb"
+
+  # Mixed databases
+  mcp-database-inspector \\
+    "mysql://user:pass@mysql-host:3306/orders" \\
+    "postgresql://user:pass@pg-host:5432/analytics"
 
   # With SSL
-  mcp-mysql-inspector "mysql://user:pass@localhost:3306/db?ssl=true"
+  mcp-database-inspector "mysql://user:pass@localhost:3306/db?ssl=true"
 
 Environment Variables:
   LOG_LEVEL - Set logging level (error, warn, info, debug, trace)
@@ -29,6 +30,7 @@ Environment Variables:
 
 Database URL Format:
   mysql://username:password@hostname:port/database?options
+  postgresql://username:password@hostname:port/database?options
 
 Supported Options:
   - ssl=true/false - Enable/disable SSL connection
@@ -41,7 +43,7 @@ Supported Options:
         if (logLevel && ['error', 'warn', 'info', 'debug', 'trace'].includes(logLevel)) {
             Logger.setLogLevel(logLevel);
         }
-        Logger.info('MCP MySQL Inspector starting...');
+        Logger.info('MCP Database Inspector starting...');
         Logger.info(`Log level: ${Logger.getLogLevel()}`);
         // Validate connection URLs
         const connectionUrls = [];
@@ -58,7 +60,7 @@ Supported Options:
         }
         Logger.info(`Validated ${connectionUrls.length} connection URL(s)`);
         // Create and initialize server
-        const server = new MySQLInspectorServer();
+        const server = new DatabaseInspectorServer();
         // Set up graceful shutdown
         let isShuttingDown = false;
         const shutdownHandler = async () => {

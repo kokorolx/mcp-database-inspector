@@ -32,7 +32,7 @@ export async function handleInformationSchemaQuery(args, dbManager) {
         const validationResult = InformationSchemaQueryArgsSchema.safeParse(args);
         if (!validationResult.success) {
             Logger.warn('Invalid arguments for information_schema_query', validationResult.error);
-            throw new ToolError(`Invalid arguments: ${validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`, 'information_schema_query');
+            throw new ToolError(`Invalid arguments: ${validationResult.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`, 'information_schema_query');
         }
         const { database, table, filters, limit } = validationResult.data;
         // Sanitize and validate database name

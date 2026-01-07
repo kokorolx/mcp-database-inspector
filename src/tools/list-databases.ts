@@ -32,22 +32,22 @@ export async function handleListDatabases(
 ): Promise<any> {
   try {
     Logger.info('Executing list_databases tool');
-    
+
     // Validate arguments (should be empty object)
     const validationResult = ListDatabasesArgsSchema.safeParse(args);
     if (!validationResult.success) {
       Logger.warn('Invalid arguments for list_databases', validationResult.error);
       throw new ToolError(
-        `Invalid arguments: ${validationResult.error.errors.map(e => e.message).join(', ')}`,
+        `Invalid arguments: ${validationResult.error.issues.map(e => e.message).join(', ')}`,
         'list_databases'
       );
     }
 
     Logger.time('list_databases_execution');
-    
+
     // Get database list from manager
     const databases = dbManager.listDatabases();
-    
+
     Logger.timeEnd('list_databases_execution');
     Logger.info(`Found ${databases.length} configured databases`);
 
@@ -55,6 +55,7 @@ export async function handleListDatabases(
     const response = {
       databases: databases.map(db => ({
         name: db.name,
+        type: db.type,
         host: db.host,
         database: db.database,
         connected: db.connected,
@@ -66,7 +67,7 @@ export async function handleListDatabases(
       summary: {
         hasConnectedDatabases: databases.length > 0,
         allConnected: databases.every(db => db.connected),
-        message: databases.length === 0 
+        message: databases.length === 0
           ? 'No databases configured. Add database connections first.'
           : `Found ${databases.length} database(s), ${databases.filter(db => db.connected).length} connected.`
       }
@@ -86,11 +87,11 @@ export async function handleListDatabases(
 
   } catch (error) {
     Logger.error('Error in list_databases tool', error);
-    
+
     if (error instanceof ToolError) {
       throw error;
     }
-    
+
     throw new ToolError(
       `Failed to list databases: ${error instanceof Error ? error.message : 'Unknown error'}`,
       'list_databases',
@@ -103,11 +104,11 @@ export function getListDatabasesSummary(dbManager: DatabaseManager): string {
   try {
     const databases = dbManager.listDatabases();
     const connectedCount = databases.filter(db => db.connected).length;
-    
+
     if (databases.length === 0) {
       return 'No databases configured';
     }
-    
+
     return `${databases.length} database(s) configured, ${connectedCount} connected: ${
       databases.map(db => `${db.name} (${db.connected ? 'connected' : 'disconnected'})`).join(', ')
     }`;

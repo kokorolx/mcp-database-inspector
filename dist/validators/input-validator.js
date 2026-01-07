@@ -3,8 +3,8 @@ export class InputValidator {
     // Schema for database connection URLs
     static connectionUrlSchema = z.string()
         .url()
-        .refine(url => url.startsWith('mysql://'), {
-        message: 'URL must start with mysql://'
+        .refine(url => url.startsWith('mysql://') || url.startsWith('postgresql://') || url.startsWith('postgres://'), {
+        message: 'URL must start with mysql://, postgresql://, or postgres://'
     })
         .refine(url => {
         try {
@@ -50,7 +50,7 @@ export class InputValidator {
             if (error instanceof z.ZodError) {
                 return {
                     isValid: false,
-                    error: error.errors.map(e => e.message).join(', ')
+                    error: error.issues.map(e => e.message).join(', ')
                 };
             }
             return {
@@ -71,7 +71,7 @@ export class InputValidator {
             if (error instanceof z.ZodError) {
                 return {
                     isValid: false,
-                    error: error.errors.map(e => e.message).join(', ')
+                    error: error.issues.map(e => e.message).join(', ')
                 };
             }
             return {
@@ -92,7 +92,7 @@ export class InputValidator {
             if (error instanceof z.ZodError) {
                 return {
                     isValid: false,
-                    error: error.errors.map(e => e.message).join(', ')
+                    error: error.issues.map(e => e.message).join(', ')
                 };
             }
             return {
@@ -113,7 +113,7 @@ export class InputValidator {
             if (error instanceof z.ZodError) {
                 return {
                     isValid: false,
-                    error: error.errors.map(e => e.message).join(', ')
+                    error: error.issues.map(e => e.message).join(', ')
                 };
             }
             return {
@@ -134,7 +134,7 @@ export class InputValidator {
             if (error instanceof z.ZodError) {
                 return {
                     isValid: false,
-                    error: error.errors.map(e => e.message).join(', ')
+                    error: error.issues.map(e => e.message).join(', ')
                 };
             }
             return {
@@ -183,7 +183,7 @@ export class InputValidator {
             if (error instanceof z.ZodError) {
                 return {
                     isValid: false,
-                    error: `Invalid arguments: ${error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`
+                    error: `Invalid arguments: ${error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`
                 };
             }
             return {
@@ -271,7 +271,7 @@ export class InputValidator {
             /secret\s*[=:]\s*[^\s&]+/gi,
             /token\s*[=:]\s*[^\s&]+/gi,
             /key\s*[=:]\s*[^\s&]+/gi,
-            /mysql:\/\/[^@]+:[^@]+@/gi, // Connection strings with credentials
+            /(mysql|postgresql?):\/\/[^@]+:[^@]+@/gi, // Connection strings with credentials
         ];
         return !sensitivePatterns.some(pattern => pattern.test(text));
     }
@@ -283,7 +283,7 @@ export class InputValidator {
             return '';
         return text
             // Mask passwords in URLs
-            .replace(/(mysql:\/\/[^:]+:)[^@]+(@)/gi, '$1***$2')
+            .replace(/((?:mysql|postgresql?):\/\/[^:]+:)[^@]+(@)/gi, '$1***$2')
             // Mask password parameters
             .replace(/(password\s*[=:]\s*)[^\s&]+/gi, '$1***')
             .replace(/(pwd\s*[=:]\s*)[^\s&]+/gi, '$1***')

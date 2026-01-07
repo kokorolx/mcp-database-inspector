@@ -27,7 +27,7 @@ export async function handleListTables(args, dbManager) {
         const validationResult = ListTablesArgsSchema.safeParse(args);
         if (!validationResult.success) {
             Logger.warn('Invalid arguments for list_tables', validationResult.error);
-            throw new ToolError(`Invalid arguments: ${validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`, 'list_tables');
+            throw new ToolError(`Invalid arguments: ${validationResult.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`, 'list_tables');
         }
         const { database } = validationResult.data;
         // Sanitize database name

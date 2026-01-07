@@ -1,5 +1,5 @@
 import { DatabaseManager } from './database/manager.js';
-export declare class MySQLInspectorServer {
+export declare class DatabaseInspectorServer {
     private server;
     private dbManager;
     constructor();
@@ -10,5 +10,5 @@ export declare class MySQLInspectorServer {
     getDatabaseManager(): DatabaseManager;
     getServerInfo(): Promise<any>;
 }
-export default MySQLInspectorServer;
+export default DatabaseInspectorServer;
 //# sourceMappingURL=server.d.ts.map

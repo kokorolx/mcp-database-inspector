@@ -57,7 +57,7 @@ export async function handleInformationSchemaQuery(
     if (!validationResult.success) {
       Logger.warn('Invalid arguments for information_schema_query', validationResult.error);
       throw new ToolError(
-        `Invalid arguments: ${validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+        `Invalid arguments: ${validationResult.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
         'information_schema_query'
       );
     }

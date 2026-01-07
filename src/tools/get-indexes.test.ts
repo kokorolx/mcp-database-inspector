@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { handleGetIndexes } from './get-indexes';
 import { DatabaseManager } from '../database/manager';
 
@@ -9,22 +9,24 @@ const mockDbManager = {
 
 describe('get_indexes', () => {
   it('should return indexes for a single table', async () => {
-    mockDbManager.getIndexes.mockResolvedValueOnce([{ name: 'PRIMARY', columns: [{ name: 'id' }] }]);
+    mockDbManager.getIndexes.mockResolvedValueOnce([{ indexName: 'PRIMARY', tableName: 'products', columnName: 'id', nonUnique: false, nullable: false, isPrimary: true }]);
     const args = { database: 'testdb', table: 'products' };
     const result = await handleGetIndexes(args, mockDbManager);
-    expect(result.tables).toHaveLength(1);
-    expect(result.tables[0].table).toBe('products');
-    expect(result.tables[0].indexes[0].name).toBe('PRIMARY');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.table).toBe('products');
+    expect(parsed.indexes[0].name).toBe('PRIMARY');
   });
 
   it('should return indexes for multiple tables', async () => {
     mockDbManager.getIndexes
-      .mockResolvedValueOnce([{ name: 'PRIMARY', columns: [{ name: 'id' }] }])
-      .mockResolvedValueOnce([{ name: 'PRIMARY', columns: [{ name: 'id' }] }]);
+      .mockResolvedValueOnce([{ indexName: 'PRIMARY', tableName: 'products', columnName: 'id', nonUnique: false, nullable: false, isPrimary: true }])
+      .mockResolvedValueOnce([{ indexName: 'PRIMARY', tableName: 'categories', columnName: 'id', nonUnique: false, nullable: false, isPrimary: true }]);
     const args = { database: 'testdb', tables: ['products', 'categories'] };
     const result = await handleGetIndexes(args, mockDbManager);
-    expect(result.tables).toHaveLength(2);
-    expect(result.tables.map(t => t.table)).toEqual(['products', 'categories']);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(Object.keys(parsed)).toHaveLength(2);
+    expect(parsed.products.table).toBe('products');
+    expect(parsed.categories.table).toBe('categories');
   });
 
   it('should throw error if neither table nor tables is provided', async () => {
@@ -39,10 +41,11 @@ describe('get_indexes', () => {
     ).rejects.toThrow(/Invalid table name/);
   });
 
-  it('should throw error if table not found', async () => {
+  it('should return empty result if table not found', async () => {
     mockDbManager.getIndexes.mockResolvedValueOnce([]);
-    await expect(() =>
-      handleGetIndexes({ database: 'testdb', table: 'notfound' }, mockDbManager)
-    ).rejects.toThrow(/not found/);
+    const result = await handleGetIndexes({ database: 'testdb', table: 'notfound' }, mockDbManager);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.indexes).toHaveLength(0);
+    expect(parsed.summary.message).toMatch(/No indexes found/);
   });
 });

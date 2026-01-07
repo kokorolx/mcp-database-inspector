@@ -19,7 +19,7 @@ export async function handleListDatabases(args, dbManager) {
         const validationResult = ListDatabasesArgsSchema.safeParse(args);
         if (!validationResult.success) {
             Logger.warn('Invalid arguments for list_databases', validationResult.error);
-            throw new ToolError(`Invalid arguments: ${validationResult.error.errors.map(e => e.message).join(', ')}`, 'list_databases');
+            throw new ToolError(`Invalid arguments: ${validationResult.error.issues.map(e => e.message).join(', ')}`, 'list_databases');
         }
         Logger.time('list_databases_execution');
         // Get database list from manager
@@ -30,6 +30,7 @@ export async function handleListDatabases(args, dbManager) {
         const response = {
             databases: databases.map(db => ({
                 name: db.name,
+                type: db.type,
                 host: db.host,
                 database: db.database,
                 connected: db.connected,

@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import { ValidationResult } from '../database/types.js';
 export declare class InputValidator {
-    static readonly connectionUrlSchema: z.ZodEffects<z.ZodEffects<z.ZodString, string, string>, string, string>;
+    static readonly connectionUrlSchema: z.ZodString;
     static readonly databaseNameSchema: z.ZodString;
     static readonly tableNameSchema: z.ZodString;
     static readonly columnNameSchema: z.ZodString;
-    static readonly textInputSchema: z.ZodEffects<z.ZodString, string, string>;
+    static readonly textInputSchema: z.ZodString;
     /**
      * Validate a connection URL
      */

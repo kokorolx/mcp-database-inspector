@@ -1,17 +1,23 @@
+export declare enum DatabaseType {
+    MySQL = "mysql",
+    PostgreSQL = "postgresql"
+}
 export interface DatabaseConfig {
     name: string;
     url: string;
+    type: DatabaseType;
     connection: any | null;
     lastUsed: Date;
     host: string;
     port: number;
     username: string;
-    password: string;
+    password?: string;
     database: string;
-    ssl?: boolean | object;
+    ssl?: boolean | any;
 }
 export interface DatabaseInfo {
     name: string;
+    type: DatabaseType;
     connected: boolean;
     lastUsed: Date;
     host: string;
@@ -19,7 +25,7 @@ export interface DatabaseInfo {
 }
 export interface TableInfo {
     tableName: string;
-    tableType: 'BASE TABLE' | 'VIEW' | 'SYSTEM TABLE';
+    tableType: string;
     engine?: string;
     tableRows?: number;
     tableComment?: string;
@@ -27,8 +33,8 @@ export interface TableInfo {
 export interface ColumnInfo {
     columnName: string;
     dataType: string;
-    isNullable: 'YES' | 'NO';
-    columnDefault?: string | null;
+    isNullable: string;
+    columnDefault?: any;
     isPrimaryKey: boolean;
     isAutoIncrement: boolean;
     columnComment?: string;
@@ -42,23 +48,23 @@ export interface ForeignKeyInfo {
     columnName: string;
     referencedTableName: string;
     referencedColumnName: string;
-    updateRule: string;
-    deleteRule: string;
+    updateRule?: string;
+    deleteRule?: string;
 }
 export interface IndexInfo {
     tableName: string;
     indexName: string;
     columnName: string;
     nonUnique: boolean;
-    indexType: string;
+    indexType?: string;
     cardinality?: number;
     subPart?: number;
     nullable: boolean;
+    isPrimary?: boolean;
 }
 export interface QueryResult {
     rows: any[];
     fields: any[];
-    affectedRows?: number;
 }
 export interface ValidationResult {
     isValid: boolean;
@@ -66,6 +72,7 @@ export interface ValidationResult {
     warnings?: string[];
 }
 export interface DatabaseConnectionOptions {
+    type: DatabaseType;
     host: string;
     port: number;
     user: string;

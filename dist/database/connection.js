@@ -1,17 +1,37 @@
 import mysql from 'mysql2/promise';
 import { URL } from 'url';
+import { DatabaseType } from './types.js';
 import { Logger } from '../utils/logger.js';
 import { DatabaseError } from '../utils/errors.js';
+import { PostgresConnection } from './postgres-connection.js';
 export class DatabaseConnection {
     static DEFAULT_TIMEOUT = 30000;
     static DEFAULT_ACQUIRE_TIMEOUT = 60000;
+    static detectDatabaseType(url) {
+        try {
+            const protocol = new URL(url).protocol.replace(':', '');
+            if (protocol === 'mysql')
+                return DatabaseType.MySQL;
+            if (protocol === 'postgresql' || protocol === 'postgres')
+                return DatabaseType.PostgreSQL;
+            throw new DatabaseError(`Unsupported database protocol: ${protocol}. Supported protocols: mysql, postgresql, postgres.`);
+        }
+        catch (error) {
+            if (error instanceof DatabaseError)
+                throw error;
+            throw new DatabaseError(`Invalid connection URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
     static parseConnectionUrl(url) {
+        const type = this.detectDatabaseType(url);
+        if (type === DatabaseType.PostgreSQL) {
+            return PostgresConnection.parseConnectionUrl(url);
+        }
+        // MySQL parsing logic (orig)
         try {
             const parsedUrl = new URL(url);
-            if (parsedUrl.protocol !== 'mysql:') {
-                throw new DatabaseError(`Unsupported protocol: ${parsedUrl.protocol}. Only 'mysql:' is supported.`);
-            }
             const options = {
+                type: DatabaseType.MySQL,
                 host: parsedUrl.hostname,
                 port: parsedUrl.port ? parseInt(parsedUrl.port) : 3306,
                 user: parsedUrl.username,
@@ -30,8 +50,6 @@ export class DatabaseConnection {
                     options.ssl = false;
                 }
             }
-            // Parse timeout if specified
-            // (timeout property is deprecated and no longer used)
             return options;
         }
         catch (error) {
@@ -39,46 +57,45 @@ export class DatabaseConnection {
         }
     }
     static async createConnection(options) {
+        if (options.type === DatabaseType.PostgreSQL) {
+            return PostgresConnection.createClient(options);
+        }
         try {
-            Logger.info(`Connecting to database at ${options.host}:${options.port}/${options.database}`);
+            Logger.info(`Connecting to MySQL database at ${options.host}:${options.port}/${options.database}`);
             const connectionConfig = {
                 host: options.host,
                 port: options.port,
                 user: options.user,
                 password: options.password,
                 database: options.database,
-                // Additional security settings
-                multipleStatements: false, // Prevent SQL injection through multiple statements
-                dateStrings: true, // Return dates as strings to avoid timezone issues
+                multipleStatements: false,
+                dateStrings: true,
             };
-            // Handle SSL configuration properly
             if (options.ssl === false) {
-                // Explicitly disable SSL
                 connectionConfig.ssl = false;
             }
             else if (options.ssl === true) {
-                // Enable SSL with default options
                 connectionConfig.ssl = {};
             }
             else if (options.ssl && typeof options.ssl === 'object') {
-                // Use custom SSL options
                 connectionConfig.ssl = options.ssl;
             }
-            // If ssl is undefined, don't set it (use MySQL default)
             const connection = await mysql.createConnection(connectionConfig);
-            // Test the connection
             await connection.ping();
-            Logger.info(`Successfully connected to database: ${options.database}`);
+            Logger.info(`Successfully connected to MySQL database: ${options.database}`);
             return connection;
         }
         catch (error) {
-            Logger.error(`Failed to connect to database: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            Logger.error(`Failed to connect to MySQL database: ${error instanceof Error ? error.message : 'Unknown error'}`);
             throw new DatabaseError(`Connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
-    static async executeQuery(connection, query, params) {
+    static async executeQuery(connection, query, params, type = DatabaseType.MySQL) {
+        if (type === DatabaseType.PostgreSQL) {
+            return PostgresConnection.executeQuery(connection, query, params);
+        }
         try {
-            Logger.debug(`Executing query: ${query.substring(0, 100)}${query.length > 100 ? '...' : ''}`);
+            Logger.debug(`Executing MySQL query: ${query.substring(0, 100)}${query.length > 100 ? '...' : ''}`);
             const [rows, fields] = await connection.execute(query, params);
             const result = {
                 rows: Array.isArray(rows) ? rows : [],
@@ -88,30 +105,35 @@ export class DatabaseConnection {
             return result;
         }
         catch (error) {
-            Logger.error(`Query execution failed: ${error instanceof Error ? error.message : 'Unknown error'}\n` +
+            Logger.error(`MySQL query execution failed: ${error instanceof Error ? error.message : 'Unknown error'}\n` +
                 `Full SQL: ${query}\n` +
                 `Params: ${JSON.stringify(params)}`);
             throw new DatabaseError(`Query execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
-    static async closeConnection(connection) {
+    static async closeConnection(connection, type = DatabaseType.MySQL) {
+        if (type === DatabaseType.PostgreSQL) {
+            return PostgresConnection.closeConnection(connection);
+        }
         try {
             await connection.end();
-            Logger.info('Database connection closed successfully');
+            Logger.info('MySQL connection closed successfully');
         }
         catch (error) {
-            Logger.warn(`Error closing database connection: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            Logger.warn(`Error closing MySQL connection: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
     static async testConnection(options) {
+        if (options.type === DatabaseType.PostgreSQL) {
+            return PostgresConnection.testConnection(options);
+        }
         let connection = null;
         try {
             connection = await this.createConnection(options);
-            await connection.ping();
             return true;
         }
         catch (error) {
-            Logger.warn(`Connection test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            Logger.warn(`MySQL connection test failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
             return false;
         }
         finally {

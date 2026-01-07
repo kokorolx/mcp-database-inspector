@@ -94,7 +94,7 @@ export async function handleGetForeignKeys(
     if (!validationResult.success) {
       Logger.warn('Invalid arguments for get_foreign_keys', validationResult.error);
       throw new ToolError(
-        `Invalid arguments: ${validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+        `Invalid arguments: ${validationResult.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
         'get_foreign_keys'
       );
     }
@@ -154,7 +154,7 @@ export async function handleGetForeignKeys(
               targetColumn: fk.referencedColumnName,
               updateRule: fk.updateRule,
               deleteRule: fk.deleteRule,
-              relationshipType: determineRelationshipType(fk.updateRule, fk.deleteRule)
+              relationshipType: determineRelationshipType(fk.updateRule || 'NO ACTION', fk.deleteRule || 'NO ACTION')
             })),
             relationships: analysis.relationships,
             statistics: {
@@ -243,7 +243,7 @@ export async function handleGetForeignKeys(
         targetColumn: fk.referencedColumnName,
         updateRule: fk.updateRule,
         deleteRule: fk.deleteRule,
-        relationshipType: determineRelationshipType(fk.updateRule, fk.deleteRule)
+        relationshipType: determineRelationshipType(fk.updateRule || 'NO ACTION', fk.deleteRule || 'NO ACTION')
       })),
       relationships: analysis.relationships,
       statistics: {
@@ -319,7 +319,7 @@ export async function handleGetForeignKeys(
 // Helper functions
 function groupForeignKeysByTable(foreignKeys: any[]): Record<string, any[]> {
   const groups: Record<string, any[]> = {};
-  
+
   foreignKeys.forEach(fk => {
     if (!groups[fk.tableName]) {
       groups[fk.tableName] = [];
@@ -333,14 +333,14 @@ function groupForeignKeysByTable(foreignKeys: any[]): Record<string, any[]> {
       deleteRule: fk.deleteRule
     });
   });
-  
+
   return groups;
 }
 
 function analyzeForeignKeyRelationships(foreignKeys: any[]): any {
   const relationships: any[] = [];
   const tableConnections: Record<string, Set<string>> = {};
-  
+
   // Group by constraint to handle composite foreign keys
   const constraintGroups: Record<string, any[]> = {};
   foreignKeys.forEach(fk => {
@@ -349,12 +349,12 @@ function analyzeForeignKeyRelationships(foreignKeys: any[]): any {
     }
     constraintGroups[fk.constraintName].push(fk);
   });
-  
+
   // Analyze each constraint
   Object.keys(constraintGroups).forEach(constraintName => {
     const fks = constraintGroups[constraintName];
     const firstFK = fks[0];
-    
+
     relationships.push({
       constraintName,
       fromTable: firstFK.tableName,
@@ -368,19 +368,19 @@ function analyzeForeignKeyRelationships(foreignKeys: any[]): any {
       deleteRule: firstFK.deleteRule,
       relationshipStrength: determineRelationshipStrength(firstFK.updateRule, firstFK.deleteRule)
     });
-    
+
     // Track table connections
     if (!tableConnections[firstFK.tableName]) {
       tableConnections[firstFK.tableName] = new Set();
     }
     tableConnections[firstFK.tableName].add(firstFK.referencedTableName);
   });
-  
+
   return {
     relationships,
     tableConnections: Object.fromEntries(
       Object.entries(tableConnections).map(([table, connections]) => [
-        table, 
+        table,
         Array.from(connections)
       ])
     ),
@@ -389,12 +389,15 @@ function analyzeForeignKeyRelationships(foreignKeys: any[]): any {
   };
 }
 
-function determineRelationshipType(updateRule: string, deleteRule: string): string {
-  if (deleteRule === 'CASCADE') {
+function determineRelationshipType(updateRule: string | undefined, deleteRule: string | undefined): string {
+  const ur = updateRule || 'NO ACTION';
+  const dr = deleteRule || 'NO ACTION';
+
+  if (ur === 'CASCADE' || dr === 'CASCADE') {
     return 'strong_dependency'; // Child cannot exist without parent
-  } else if (deleteRule === 'RESTRICT' || deleteRule === 'NO ACTION') {
+  } else if (dr === 'RESTRICT' || dr === 'NO ACTION') {
     return 'protective'; // Prevents accidental deletion
-  } else if (deleteRule === 'SET NULL') {
+  } else if (dr === 'SET NULL') {
     return 'optional_reference'; // Relationship can be broken
   } else {
     return 'unknown';
@@ -426,7 +429,7 @@ function analyzeIntegrityRules(foreignKeys: any[]): any {
       update: foreignKeys.filter(fk => fk.updateRule === 'SET NULL')
     }
   };
-  
+
   return {
     rules,
     summary: {
@@ -439,7 +442,7 @@ function analyzeIntegrityRules(foreignKeys: any[]): any {
 
 function identifyPotentialIssues(foreignKeys: any[]): string[] {
   const issues: string[] = [];
-  
+
   // Check for circular references
   const tableGraph: Record<string, string[]> = {};
   foreignKeys.forEach(fk => {
@@ -448,7 +451,7 @@ function identifyPotentialIssues(foreignKeys: any[]): string[] {
     }
     tableGraph[fk.tableName].push(fk.referencedTableName);
   });
-  
+
   // Simple cycle detection (this is a basic check, not comprehensive)
   Object.keys(tableGraph).forEach(table => {
     tableGraph[table].forEach(referenced => {
@@ -457,29 +460,29 @@ function identifyPotentialIssues(foreignKeys: any[]): string[] {
       }
     });
   });
-  
+
   // Check for many cascade delete relationships from same parent
   const cascadeParents: Record<string, number> = {};
   foreignKeys.filter(fk => fk.deleteRule === 'CASCADE').forEach(fk => {
     cascadeParents[fk.referencedTableName] = (cascadeParents[fk.referencedTableName] || 0) + 1;
   });
-  
+
   Object.entries(cascadeParents).forEach(([table, count]) => {
     if (count > 5) {
       issues.push(`Table '${table}' has ${count} cascade delete relationships - consider the impact of deletions`);
     }
   });
-  
+
   // Check for inconsistent naming patterns
   const constraintNames = foreignKeys.map(fk => fk.constraintName);
-  const hasConsistentNaming = constraintNames.every(name => 
-    name.startsWith('fk_') || name.startsWith('FK_') || 
+  const hasConsistentNaming = constraintNames.every(name =>
+    name.startsWith('fk_') || name.startsWith('FK_') ||
     name.includes('_fk') || name.includes('_FK')
   );
-  
+
   if (!hasConsistentNaming && constraintNames.length > 1) {
     issues.push('Foreign key constraint names follow inconsistent naming patterns');
   }
-  
+
   return issues;
 }
