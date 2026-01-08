@@ -15,9 +15,7 @@ export interface ExecuteQueryTool {
             };
             params?: {
                 type: 'array';
-                items: {
-                    type: 'any';
-                };
+                items: {};
                 description: 'Optional parameters for the query';
             };
             limit?: {

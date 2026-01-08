@@ -20,7 +20,7 @@ export interface ExecuteQueryTool {
     properties: {
       database: { type: 'string'; description: 'Database name' };
       query: { type: 'string'; description: 'SQL query to execute' };
-      params?: { type: 'array'; items: { type: 'any' }; description: 'Optional parameters for the query' };
+      params?: { type: 'array'; items: {}; description: 'Optional parameters for the query' };
       limit?: { type: 'number'; description: 'Optional limit for number of rows (default 1000, max 1000)' };
     };
     required: ['database', 'query'];
@@ -35,7 +35,7 @@ export const executeQueryToolDefinition: ExecuteQueryTool = {
     properties: {
       database: { type: 'string', description: 'Database name' },
       query: { type: 'string', description: 'SQL query to execute' },
-      params: { type: 'array', items: { type: 'any' }, description: 'Optional parameters for the query' },
+      params: { type: 'array', items: {}, description: 'Optional parameters for the query' },
       limit: { type: 'number', description: 'Optional limit for number of rows (default 1000, max 1000)' }
     },
     required: ['database', 'query']
